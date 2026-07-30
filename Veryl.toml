@@ -13,8 +13,9 @@ target = { type = "directory", path = "target" }
 [test]
 
 [dependencies]
-fixedpoint = { path = "../fixedpoint" }
-nco = { path = "../nco" }
+gndless_fixedpoint = { github = "AkiyukiOkayasu/gndless-fixedpoint-veryl", version = "0.1.0" }
+gndless_nco = { github = "AkiyukiOkayasu/gndless-nco-veryl", version = "0.1.0" }
+
 [publish]
 register = true
 bump_commit = true

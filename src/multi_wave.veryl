@@ -13,9 +13,6 @@ pub package WaveTypes {
     }
 }
 
-import WaveTypes::WaveType;
-import WaveTypes::WaveType::*;
-
 /// マルチ波形生成コアモジュール
 /// 位相入力から4種類の波形（Sine, Triangle, Saw, Pwm）を生成し、選択出力
 /// Sineは線形補間付きLUT、他は組み合わせ回路
@@ -23,16 +20,19 @@ import WaveTypes::WaveType::*;
 /// レイテンシー: 1クロック
 pub module MultiWaveCore (
     clk       : input  clock                 , /// クロック
-    phase     : input  nco::Phase::phase_t   , /// 位相入力 (0 ~ 2^32-1)
+    phase     : input  gndless_nco::Phase::phase_t   , /// 位相入力 (0 ~ 2^32-1)
     wave_type : input  WaveType              , /// 波形タイプ選択
-    duty_cycle: input  nco::Phase::phase_t   , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : output fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    duty_cycle: input  gndless_nco::Phase::phase_t   , /// PWMデューティ比 (Pwm以外では無視)
+    audio     : output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
 ) {
+    import WaveTypes::WaveType;
+    import WaveTypes::WaveType::*;
+
     // 各波形コアの出力
-    var sine_out    : fixedpoint::Q8_24::Raw;
-    var triangle_out: fixedpoint::Q8_24::Raw;
-    var saw_out     : fixedpoint::Q8_24::Raw;
-    var square_out  : fixedpoint::Q8_24::Raw;
+    var sine_out    : gndless_fixedpoint::Q8_24::Raw;
+    var triangle_out: gndless_fixedpoint::Q8_24::Raw;
+    var saw_out     : gndless_fixedpoint::Q8_24::Raw;
+    var square_out  : gndless_fixedpoint::Q8_24::Raw;
 
     // サイン波コア (線形補間、1クロック遅延あり)
     inst sine_core: SineWaveLerpCore (
@@ -61,9 +61,9 @@ pub module MultiWaveCore (
     );
 
     // 波形選択用レジスタ (1クロック遅延でサイン波とタイミング整合)
-    var triangle_out_d: fixedpoint::Q8_24::Raw;
-    var saw_out_d     : fixedpoint::Q8_24::Raw;
-    var square_out_d  : fixedpoint::Q8_24::Raw;
+    var triangle_out_d: gndless_fixedpoint::Q8_24::Raw;
+    var saw_out_d     : gndless_fixedpoint::Q8_24::Raw;
+    var square_out_d  : gndless_fixedpoint::Q8_24::Raw;
     var wave_type_d   : WaveType              ;
 
     always_ff (clk) {
@@ -93,14 +93,17 @@ pub module MultiWaveCore (
 pub module MultiWaveOscillator (
     clk       : input  clock                 , /// クロック
     phase_rst : input  bbool                 , /// 位相ゼロリセット (同期)
-    phase_step: input  nco::Phase::step_t    , /// 1クロックあたりの位相ステップ量
+    phase_step: input  gndless_nco::Phase::step_t    , /// 1クロックあたりの位相ステップ量
     wave_type : input  WaveType              , /// 波形タイプ選択
-    duty_cycle: input  nco::Phase::phase_t   , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : output fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    duty_cycle: input  gndless_nco::Phase::phase_t   , /// PWMデューティ比 (Pwm以外では無視)
+    audio     : output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
 ) {
-    // 位相生成 (共通nco::Phasor)
-    var phase: nco::Phase::phase_t;
-    inst phasor: nco::Phasor (
+    import WaveTypes::WaveType;
+    import WaveTypes::WaveType::*;
+
+    // 位相生成 (共通Phase::Phasor)
+    var phase: gndless_nco::Phase::phase_t;
+    inst phasor: gndless_nco::Phasor (
         clk          ,
         phase_rst    ,
         phase_step   ,

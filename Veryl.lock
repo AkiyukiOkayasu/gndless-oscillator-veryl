@@ -3,15 +3,29 @@
 version = 1
 
 [[projects]]
-name = "fixedpoint"
-source = "../fixedpoint"
+name = "gndless_fixedpoint"
 dependencies = []
+
+[projects.source]
+uuid = "f1b9fe28-7740-559e-b221-46bee01da60c"
+url = "https://github.com/AkiyukiOkayasu/gndless-fixedpoint-veryl"
+path = ""
+project = "gndless_fixedpoint"
+version = "0.1.0"
+revision = "db96e9a844be365019faacca543a44188564024c"
 
 [projects.properties]
 
 [[projects]]
-name = "nco"
-source = "../nco"
+name = "gndless_nco"
 dependencies = []
+
+[projects.source]
+uuid = "6f8d0d36-407c-5b96-9b2e-e9fc31a63432"
+url = "https://github.com/AkiyukiOkayasu/gndless-nco-veryl"
+path = ""
+project = "gndless_nco"
+version = "0.1.0"
+revision = "23b602972ab07aa2fb7596590367d2caa125bddb"
 
 [projects.properties]
