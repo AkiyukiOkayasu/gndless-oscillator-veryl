@@ -7,6 +7,8 @@ pub module SineWaveCore (
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
+    import gndless_fixedpoint::Types::{RoundingMode, OverflowMode};
+
     // ----------------------------------------------------
     // 象限判定とアドレス計算
     // ----------------------------------------------------
@@ -55,10 +57,10 @@ pub module SineWaveCore (
     always_comb {
         s        = $signed({1'b0, rom_data}); // Q1.31形式に変換
         audio_q8 = gndless_fixedpoint::convert::<
-            gndless_fixedpoint::Q1_31                               ,
-            gndless_fixedpoint::Q8_24                               ,
-            gndless_fixedpoint::Types::RoundingMode::TOWARD_NEGATIVE,
-            gndless_fixedpoint::Types::OverflowMode::SATURATE       ,
+            gndless_fixedpoint::Q1_31    ,
+            gndless_fixedpoint::Q8_24    ,
+            RoundingMode::TOWARD_NEGATIVE,
+            OverflowMode::SATURATE       ,
         >(s); // Q8.24形式にスケール
 
         // 第3・第4象限はマイナス側
@@ -80,6 +82,8 @@ pub module SineWaveLerpCore (
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
+    import gndless_fixedpoint::Types::{RoundingMode, OverflowMode};
+
     // ----------------------------------------------------
     // 象限判定と「三角波状」位相への変換
     // ----------------------------------------------------
@@ -169,10 +173,10 @@ pub module SineWaveLerpCore (
     always_comb {
         s        = $signed({1'b0, interp_res}); // Q1.31形式に変換
         audio_q8 = gndless_fixedpoint::convert::<
-            gndless_fixedpoint::Q1_31                               ,
-            gndless_fixedpoint::Q8_24                               ,
-            gndless_fixedpoint::Types::RoundingMode::TOWARD_NEGATIVE,
-            gndless_fixedpoint::Types::OverflowMode::SATURATE       ,
+            gndless_fixedpoint::Q1_31    ,
+            gndless_fixedpoint::Q8_24    ,
+            RoundingMode::TOWARD_NEGATIVE,
+            OverflowMode::SATURATE       ,
         >(s); // Q8.24形式にスケール
 
         // 第3・第4象限はマイナス側

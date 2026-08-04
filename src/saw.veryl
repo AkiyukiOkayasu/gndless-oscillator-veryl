@@ -5,6 +5,8 @@ pub module SawWaveCore (
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
+    import gndless_fixedpoint::Types::{RoundingMode, OverflowMode};
+
     // 位相のMSBを反転させることで、Q1.31形式のノコギリ波を生成
     // 0x0000_0000 (0度)  -> 0x8000_0000 (負の最大 = -1.0)
     // 0x8000_0000 (180度) -> 0x0000_0000 (0.0)
@@ -16,10 +18,10 @@ pub module SawWaveCore (
     always_comb {
         q1_value  = $signed({~phase[msb], phase[msb - 1:0]});
         q8_value  = gndless_fixedpoint::convert::<
-            gndless_fixedpoint::Q1_31                               ,
-            gndless_fixedpoint::Q8_24                               ,
-            gndless_fixedpoint::Types::RoundingMode::TOWARD_NEGATIVE,
-            gndless_fixedpoint::Types::OverflowMode::SATURATE       ,
+            gndless_fixedpoint::Q1_31    ,
+            gndless_fixedpoint::Q8_24    ,
+            RoundingMode::TOWARD_NEGATIVE,
+            OverflowMode::SATURATE       ,
         >(q1_value);
         audio.raw = q8_value;
     }
