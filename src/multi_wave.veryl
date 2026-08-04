@@ -19,20 +19,20 @@ pub package WaveTypes {
 /// レイテンシ整合のため、全波形を1クロック遅延させて出力
 /// レイテンシー: 1クロック
 pub module MultiWaveCore (
-    clk       : input  clock                 , /// クロック
-    phase     : input  gndless_nco::Phase::phase_t   , /// 位相入力 (0 ~ 2^32-1)
-    wave_type : input  WaveType              , /// 波形タイプ選択
-    duty_cycle: input  gndless_nco::Phase::phase_t   , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk       : input   clock                                                                        , /// クロック
+    phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
+    wave_type : input   WaveType                                                                     , /// 波形タイプ選択
+    duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// PWMデューティ比 (Pwm以外では無視)
+    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;
 
     // 各波形コアの出力
-    var sine_out    : gndless_fixedpoint::Q8_24::Raw;
-    var triangle_out: gndless_fixedpoint::Q8_24::Raw;
-    var saw_out     : gndless_fixedpoint::Q8_24::Raw;
-    var square_out  : gndless_fixedpoint::Q8_24::Raw;
+    inst sine_out    : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
+    inst triangle_out: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
+    inst saw_out     : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
+    inst square_out  : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
 
     // サイン波コア (線形補間、1クロック遅延あり)
     inst sine_core: SineWaveLerpCore (
@@ -64,23 +64,23 @@ pub module MultiWaveCore (
     var triangle_out_d: gndless_fixedpoint::Q8_24::Raw;
     var saw_out_d     : gndless_fixedpoint::Q8_24::Raw;
     var square_out_d  : gndless_fixedpoint::Q8_24::Raw;
-    var wave_type_d   : WaveType              ;
+    var wave_type_d   : WaveType                      ;
 
     always_ff (clk) {
-        triangle_out_d = triangle_out;
-        saw_out_d      = saw_out;
-        square_out_d   = square_out;
+        triangle_out_d = triangle_out.raw;
+        saw_out_d      = saw_out.raw;
+        square_out_d   = square_out.raw;
         wave_type_d    = wave_type;
     }
 
     // 波形選択マルチプレクサ
     always_comb {
         case wave_type_d {
-            Sine    : audio = sine_out;
-            Triangle: audio = triangle_out_d;
-            Saw     : audio = saw_out_d;
-            Pwm     : audio = square_out_d;
-            default : audio = sine_out;
+            Sine    : audio.raw = sine_out.raw;
+            Triangle: audio.raw = triangle_out_d;
+            Saw     : audio.raw = saw_out_d;
+            Pwm     : audio.raw = square_out_d;
+            default : audio.raw = sine_out.raw;
         }
     }
 }
@@ -91,12 +91,12 @@ pub module MultiWaveCore (
 /// 波形切り替え時のレイテンシ整合のため、全波形を1クロック遅延させて出力
 /// レイテンシー: 1クロック
 pub module MultiWaveOscillator (
-    clk       : input  clock                 , /// クロック
-    phase_rst : input  bbool                 , /// 位相ゼロリセット (同期)
-    phase_step: input  gndless_nco::Phase::step_t    , /// 1クロックあたりの位相ステップ量
-    wave_type : input  WaveType              , /// 波形タイプ選択
-    duty_cycle: input  gndless_nco::Phase::phase_t   , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk       : input   clock                                                                        , /// クロック
+    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
+    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量
+    wave_type : input   WaveType                                                                     , /// 波形タイプ選択
+    duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// PWMデューティ比 (Pwm以外では無視)
+    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;

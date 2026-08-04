@@ -14,8 +14,8 @@
 pub module PinkNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
-    clk  : input  clock                 , /// クロック
-    audio: output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk  : input   clock                                                                        , /// クロック
+    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     const INIT_SEED: u32 = 32'h2463_5345;
 
@@ -69,6 +69,6 @@ pub module PinkNoise #(
         for k in 0..24 {
             sum = sum + $signed(rows[k]);
         }
-        audio = (sum >>> 10) as 32;
+        audio.raw = (sum >>> 10) as 32;
     }
 }

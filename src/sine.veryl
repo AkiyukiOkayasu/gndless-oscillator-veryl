@@ -3,9 +3,9 @@
 /// 第一象限(0~90度)の波形データ10bit分をROMに持っているので、実質的な分解能は12bit相当
 /// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineWaveCore (
-    clk  : input  clock                 , /// クロック
-    phase: input  gndless_nco::Phase::phase_t   , /// 位相入力 (0 ~ 2^32-1)
-    audio: output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk  : input   clock                                                                        , /// クロック
+    phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
+    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     // ----------------------------------------------------
     // 象限判定とアドレス計算
@@ -64,9 +64,9 @@ pub module SineWaveCore (
         // 第3・第4象限はマイナス側
         // 遅延させた象限情報を使って符号反転
         if quadrant_d[1] {
-            audio = -audio_q8;
+            audio.raw = -audio_q8;
         } else {
-            audio = audio_q8;
+            audio.raw = audio_q8;
         }
     }
 }
@@ -76,9 +76,9 @@ pub module SineWaveCore (
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
 /// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineWaveLerpCore (
-    clk  : input  clock                 , /// クロック
-    phase: input  gndless_nco::Phase::phase_t   , /// 位相入力 (0 ~ 2^32-1)
-    audio: output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk  : input   clock                                                                        , /// クロック
+    phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
+    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     // ----------------------------------------------------
     // 象限判定と「三角波状」位相への変換
@@ -178,9 +178,9 @@ pub module SineWaveLerpCore (
         // 第3・第4象限はマイナス側
         // 遅延させた象限情報を使って符号反転
         if quadrant_d[1] {
-            audio = -audio_q8;
+            audio.raw = -audio_q8;
         } else {
-            audio = audio_q8;
+            audio.raw = audio_q8;
         }
     }
 }
@@ -190,10 +190,10 @@ pub module SineWaveLerpCore (
 /// 第一象限(0~90度)の波形データ10bit分をROMに持っているので、実質的な分解能は12bit相当
 /// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineOscillator (
-    clk       : input  clock                 , /// クロック
-    phase_rst : input  bbool                 , /// 位相ゼロリセット (同期)
-    phase_step: input  gndless_nco::Phase::step_t    , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
-    audio     : output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk       : input   clock                                                                        , /// クロック
+    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
+    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
+    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     // 位相生成 (Phase Accumulator)
     var phase: gndless_nco::Phase::phase_t;
@@ -213,10 +213,10 @@ pub module SineOscillator (
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
 /// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineOscillatorLerp (
-    clk       : input  clock                 , /// クロック
-    phase_rst : input  bbool                 , /// 位相ゼロリセット (同期)
-    phase_step: input  gndless_nco::Phase::step_t    , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
-    audio     : output gndless_fixedpoint::Q8_24::Raw, /// 出力波形 (Q8.24形式)
+    clk       : input   clock                                                                        , /// クロック
+    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
+    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
+    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
 ) {
     // 位相生成
     var phase: gndless_nco::Phase::phase_t;
