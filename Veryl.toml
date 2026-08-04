@@ -1,6 +1,6 @@
 [project]
 name = "gndless_oscillator"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Akiyuki Okayasu"]
 description = "Periodic waveform and noise oscillators for Veryl."
 license = "MIT OR Apache-2.0"
