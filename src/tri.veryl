@@ -39,13 +39,7 @@ pub module TriangleOscillator (
 ) {
     // 位相生成
     var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor (
-        clk          ,
-        phase_rst    ,
-        phase_step   ,
-        phase        ,
-        eoc       : _,
-    );
+    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
 
     // 三角波生成
     inst core: TriangleWaveCore ( phase, audio );

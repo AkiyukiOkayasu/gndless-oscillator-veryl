@@ -103,13 +103,7 @@ pub module MultiWaveOscillator (
 
     // 位相生成 (共通Phase::Phasor)
     var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor (
-        clk          ,
-        phase_rst    ,
-        phase_step   ,
-        phase        ,
-        eoc       : _,
-    );
+    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
 
     // マルチ波形生成コア
     inst core: MultiWaveCore ( clk, phase, wave_type, duty_cycle, audio );

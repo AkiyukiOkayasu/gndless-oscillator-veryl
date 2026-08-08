@@ -18,14 +18,7 @@ revision = "62fe80930ed4fee336333dd2d4b9476c56594ca8"
 
 [[projects]]
 name = "gndless_nco"
+source = "../gndless-nco-veryl"
 dependencies = []
-
-[projects.source]
-uuid = "6f8d0d36-407c-5b96-9b2e-e9fc31a63432"
-url = "https://github.com/AkiyukiOkayasu/gndless-nco-veryl"
-path = ""
-project = "gndless_nco"
-version = "0.1.0"
-revision = "23b602972ab07aa2fb7596590367d2caa125bddb"
 
 [projects.properties]

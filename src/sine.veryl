@@ -201,13 +201,7 @@ pub module SineOscillator (
 ) {
     // 位相生成 (Phase Accumulator)
     var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor (
-        clk          ,
-        phase_rst    ,
-        phase_step   ,
-        phase        ,
-        eoc       : _,
-    );
+    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
 
     // サイン波生成
     inst core: SineWaveCore ( clk, phase, audio );
@@ -224,13 +218,7 @@ pub module SineOscillatorLerp (
 ) {
     // 位相生成
     var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor (
-        clk          ,
-        phase_rst    ,
-        phase_step   ,
-        phase        ,
-        eoc       : _,
-    );
+    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
 
     // サイン波生成 (線形補間付き)
     inst core: SineWaveLerpCore ( clk, phase, audio );
