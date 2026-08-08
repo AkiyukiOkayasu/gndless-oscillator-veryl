@@ -15,7 +15,7 @@ pub module PinkNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
     clk  : input   clock                                                                        , /// クロック
-    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
+    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     const INIT_SEED: u32 = 32'h2463_5345;
 
@@ -61,7 +61,7 @@ pub module PinkNoise #(
     }
 
     // 全行の加算とスケーリング
-    // 24行のQ1.31和 → ÷8(>>3) → Q8.24変換(>>>7) = 合計>>>10
+    // 24行のQ1.31和 → ÷8(>>3) → Q4.23変換(>>>13) = 合計>>>16
     var sum: signed logic<37>;
 
     always_comb {
@@ -69,6 +69,6 @@ pub module PinkNoise #(
         for k in 0..24 {
             sum = sum + $signed(rows[k]);
         }
-        audio.raw = (sum >>> 10) as 32;
+        audio.raw = (sum >>> 16) as 27;
     }
 }

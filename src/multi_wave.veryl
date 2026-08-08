@@ -23,16 +23,16 @@ pub module MultiWaveCore (
     phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
     wave_type : input   WaveType                                                                     , /// 波形タイプ選択
     duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
+    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;
 
     // 各波形コアの出力
-    inst sine_out    : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
-    inst triangle_out: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
-    inst saw_out     : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
-    inst square_out  : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>;
+    inst sine_out    : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst triangle_out: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_out     : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst square_out  : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
 
     // サイン波コア (線形補間、1クロック遅延あり)
     inst sine_core: SineWaveLerpCore (
@@ -61,9 +61,9 @@ pub module MultiWaveCore (
     );
 
     // 波形選択用レジスタ (1クロック遅延でサイン波とタイミング整合)
-    var triangle_out_d: gndless_fixedpoint::Q8_24::Raw;
-    var saw_out_d     : gndless_fixedpoint::Q8_24::Raw;
-    var square_out_d  : gndless_fixedpoint::Q8_24::Raw;
+    var triangle_out_d: gndless_fixedpoint::Q4_23::Raw;
+    var saw_out_d     : gndless_fixedpoint::Q4_23::Raw;
+    var square_out_d  : gndless_fixedpoint::Q4_23::Raw;
     var wave_type_d   : WaveType                      ;
 
     always_ff (clk) {
@@ -96,7 +96,7 @@ pub module MultiWaveOscillator (
     phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量
     wave_type : input   WaveType                                                                     , /// 波形タイプ選択
     duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q8_24>::output_port, /// 出力波形 (Q8.24形式)
+    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;
