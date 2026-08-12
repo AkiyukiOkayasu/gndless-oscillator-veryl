@@ -45,19 +45,53 @@ pub module WhiteNoise #(
         }
     }
 
-    // Q4.23直接生成: Q1.31としての値 {rng_state[31], rng_state[30:0]} の8bit算術右シフトは
-    // {rng_state[31] repeat 3, rng_state[31:8]} の bit slice で表せる
+    // Q4.23直接生成: Q1.31としての値の8bit算術右シフト
+    // 注: $signed(concat) の幅拡張castはsim backendで符号拡張されないため、
+    //      $signed(rng_state) >>> 8 の算術シフトで表現する
     var audio_d1: gndless_fixedpoint::Q4_23::Raw;
     var audio_d2: gndless_fixedpoint::Q4_23::Raw;
     var audio_d3: gndless_fixedpoint::Q4_23::Raw;
 
     always_ff (clk) {
-        audio_d1 = $signed({rng_state[msb] repeat 3, rng_state[msb:8]});
+        audio_d1 = ($signed(rng_state) >>> 8) as 27;
         audio_d2 = audio_d1;
         audio_d3 = audio_d2;
     }
 
     always_comb {
         audio.raw = audio_d3;
+    }
+}
+
+/// ホワイトノイズの出力レベルを検証
+/// 一様分布 [-1, 1) のmean-abs ≈ 0.5 なので、Q4.23で ≈ 0.5 * 2^23 = 4194304。
+/// 許容範囲 [0.45, 0.55] * 2^23 で、2048サンプルの統計誤差 (3σ≈1%) を吸収する。
+#[test(test_white_noise_level)]
+module test_white_noise_level {
+    inst clk  : $tb::clock_gen;
+    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+
+    inst dut: WhiteNoise #( DIV: 8 ) ( clk, audio );
+
+    var acc     : u64;
+    var mean_abs: u64;
+
+    initial {
+        // rng_state初期値は0のため、初回更新 (8クロック後) でINITIAL_SEEDに初期化される。
+        // 出力はrng_stateから3クロック遅延するため、+3してからサンプリングする。
+        clk.next(8 + 3);
+        for _ in 0..2048 {
+            if audio.raw <: 0 {
+                acc = acc + ((-audio.raw) as u64);
+            } else {
+                acc = acc + (audio.raw as u64);
+            }
+            clk.next(8);
+        }
+
+        mean_abs = acc / 2048;
+        $assert(mean_abs >= 64'd3774874 && mean_abs <= 64'd4613735, "white noise level out of range");
+
+        $finish();
     }
 }

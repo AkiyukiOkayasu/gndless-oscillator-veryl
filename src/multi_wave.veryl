@@ -96,3 +96,50 @@ pub module MultiWaveOscillator (
     // マルチ波形生成コア
     inst core: MultiWaveCore ( clk, phase, wave_type, duty_cycle, audio );
 }
+
+/// MultiWaveCoreのレイテンシー一致を検証
+/// 全coreが3クロックのため、位相変更後3クロックまでは旧値のまま、3クロック後に新値が出る。
+/// また wave_type は組み合わせmuxのため即時 (0クロック) で切り替わる。
+/// 期待値: 45度 (phase=0x2000_0000) で sine=5931640 / triangle=-4194304 / saw=-6291456 / square=ONE (duty=0x4000_0000)
+#[test(test_multi_wave_core_latency)]
+module test_multi_wave_core_latency {
+    import WaveTypes::WaveType;
+    import WaveTypes::WaveType::*;
+
+    inst clk: $tb::clock_gen;
+
+    var phase     : gndless_nco::Phase::phase_t;
+    var wave_type : WaveType                   ;
+    var duty_cycle: gndless_nco::Phase::phase_t;
+    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+
+    inst dut: MultiWaveCore ( clk, phase, wave_type, duty_cycle, audio );
+
+    initial {
+        duty_cycle = 32'h4000_0000;
+
+        phase     = 32'h0000_0000;
+        wave_type = WaveType::Triangle;
+        clk.next(3);
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "triangle 0deg mismatch");
+
+        // 位相変更後、3クロック経過するまでは前の値のまま (全coreのlatency 3)
+        phase = 32'h2000_0000;
+        clk.next(1);
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "latency 3違反 (1クロック後)");
+        clk.next(1);
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "latency 3違反 (2クロック後)");
+        clk.next(1);
+        $assert(audio.raw == -27'sd4194304, "triangle 45deg mismatch");
+
+        // wave_typeは組み合わせで即時切り替わる
+        wave_type = WaveType::Sine;
+        $assert(audio.raw == 27'sd5931640, "sine 45deg mismatch");
+        wave_type = WaveType::Saw;
+        $assert(audio.raw == -27'sd6291456, "saw 45deg mismatch");
+        wave_type = WaveType::Pwm;
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::ONE, "square 45deg mismatch");
+
+        $finish();
+    }
+}

@@ -223,3 +223,127 @@ pub module SineOscillatorLerp (
     // サイン波生成 (線形補間付き)
     inst core: SineWaveLerpCore ( clk, phase, audio );
 }
+
+/// サイン波コアの位相変換とレイテンシーを検証
+/// 期待値はSineRomDataのテーブル値 (table[512] = 0x5A8278 = 5931640、table[1023] = 0x7FFFF5 = 8388597)
+#[test(test_sine_wave_core)]
+module test_sine_wave_core {
+    inst clk: $tb::clock_gen;
+
+    var phase: gndless_nco::Phase::phase_t;
+    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+
+    inst dut: SineWaveCore ( clk, phase, audio );
+
+    initial {
+        phase = 32'h0000_0000;
+        clk.next(3);
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "sine 0deg mismatch");
+
+        phase = 32'h2000_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd5931640, "sine 45deg mismatch");
+
+        phase = 32'h4000_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd8388597, "sine 90deg mismatch");
+
+        phase = 32'h8000_0000;
+        clk.next(3);
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "sine 180deg mismatch");
+
+        phase = 32'hC000_0000;
+        clk.next(3);
+        $assert(audio.raw == -27'sd8388597, "sine 270deg mismatch");
+
+        $finish();
+    }
+}
+
+/// サイン波コア (線形補間) の位相変換とレイテンシーを検証
+/// 期待値はテーブル値と補間式から導出:
+///   45度 (frac=0)      : table[512] = 5931640
+///   frac < 2^3         : coeff=0 なので table[512] のまま
+///   中点 (frac=2^19)    : table[512] + (table[513]-table[512])/2 = 5931640 + 4546 = 5936186
+///   90度 (idx=1023)    : table[1023] + (Q1_23::MAX - table[1023])*coeff>>>17 = 8388597 + 9 = 8388606
+#[test(test_sine_wave_lerp_core)]
+module test_sine_wave_lerp_core {
+    inst clk: $tb::clock_gen;
+
+    var phase: gndless_nco::Phase::phase_t;
+    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+
+    inst dut: SineWaveLerpCore ( clk, phase, audio );
+
+    initial {
+        phase = 32'h0000_0000;
+        clk.next(3);
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "lerp 0deg mismatch");
+
+        phase = 32'h2000_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd5931640, "lerp 45deg (frac=0) mismatch");
+
+        phase = 32'h2000_0001;
+        clk.next(3);
+        $assert(audio.raw == 27'sd5931640, "lerp frac<2^3 (coeff=0) mismatch");
+
+        phase = 32'h2008_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd5936186, "lerp midpoint mismatch");
+
+        phase = 32'h4000_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd8388606, "lerp 90deg peak mismatch");
+
+        phase = 32'hA000_0000;
+        clk.next(3);
+        $assert(audio.raw == -27'sd5931640, "lerp quadrant sign mismatch");
+
+        $finish();
+    }
+}
+
+/// サイン波コア (線形補間) の連続位相更新時 (オシレーター実動作) の出力連続性を検証
+/// 位相ステップ2^14あたりの最大変化量 ≈ 2π * 2^14 / 2^32 * 2^23 ≈ 201 LSB。
+/// 3段pipelineのタイミング不整合 (stale値混入) があると10^6オーダーの不連続が出るため、
+/// 上限1024 LSBで検出する。位相は32bitで自然にラップする (サインは周期関数)。
+#[test(test_sine_wave_lerp_core_sweep)]
+module test_sine_wave_lerp_core_sweep {
+    inst clk: $tb::clock_gen;
+
+    const STEP: gndless_nco::Phase::phase_t = 32'd16384;
+
+    var phase: gndless_nco::Phase::phase_t;
+    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+
+    inst dut: SineWaveLerpCore ( clk, phase, audio );
+
+    var prev     : gndless_fixedpoint::Q4_23::Raw    ;
+    var delta    : signed logic                  <32>;
+    var max_delta: signed logic                  <32>;
+
+    initial {
+        phase     = 0;
+        max_delta = 0;
+        clk.next(4);
+
+        prev = audio.raw;
+        for _ in 0..10000 {
+            phase = phase + STEP;
+            clk.next(1);
+
+            delta = (audio.raw as 32) - (prev as 32);
+            if delta <: 0 {
+                delta = -delta;
+            }
+            if delta >: max_delta {
+                max_delta = delta;
+            }
+            prev = audio.raw;
+        }
+
+        $assert(max_delta <: 32'sd1024, "continuous sweep discontinuity");
+        $finish();
+    }
+}
