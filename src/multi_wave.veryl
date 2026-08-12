@@ -19,6 +19,8 @@ pub package WaveTypes {
 ///   Sine (線形補間): 3クロック、Triangle/Saw/Pwm: 0クロック (組み合わせ)
 /// 波形切替は組み合わせmuxで即時反映される。Sineと他波形の間では位相が最大3クロック分
 /// ずれるが、位相誤差は1度未満 (50MHz・20kHzで約0.4度) で可聴域外のため整列は行わない。
+/// 楽器用途ではレイテンシー差は定数遅延として現れるだけで音色に影響しないため、
+/// 遅延整列レジスタを追加しないこと (リソースの無駄)。
 pub module MultiWaveCore (
     clk       : input   clock                                                                        , /// クロック
     phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
