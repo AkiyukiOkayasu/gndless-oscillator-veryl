@@ -1,6 +1,6 @@
 /// 三角波生成コアモジュール
 /// 位相入力から波形を生成する純粋な変換モジュール
-/// 全て組み合わせ回路で実装しているため遅延ゼロ
+/// Q4.23をbit sliceで直接生成する (Q1.31経由のconvert相当を不要化)
 pub module TriangleWaveCore (
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
@@ -21,8 +21,9 @@ pub module TriangleWaveCore (
 
     // 出力スケーリングとオフセット
     always_comb {
-        // 右シフト 7bit: 31bitフルスケールを Q4.23の "+2.0"にスケール
-        let unipolar_2_0: gndless_fixedpoint::Q4_23::Raw = ($signed(tri_wave) >>> 7) as gndless_fixedpoint::Q4_23::Raw;
+        // bit slice: 31bitフルスケール (2^31-1) を Q4.23 の "+2.0" にスケール
+        // ($signed(tri_wave) >>> 7) は上位bitが常に0なので {3'b0, tri_wave[30:7]} と等価
+        let unipolar_2_0: gndless_fixedpoint::Q4_23::Raw = $signed({3'b0, tri_wave[30:7]});
 
         // オフセット: 0.0～2.0 の範囲を -1.0～1.0 にずらす
         audio.raw = unipolar_2_0 - gndless_fixedpoint::Q4_23::ONE;
