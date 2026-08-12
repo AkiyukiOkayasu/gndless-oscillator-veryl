@@ -15,9 +15,9 @@ pub package WaveTypes {
 
 /// マルチ波形生成コアモジュール
 /// 位相入力から4種類の波形（Sine, Triangle, Saw, Pwm）を生成し、選択出力
-/// Sineは線形補間付きLUT、他は組み合わせ回路
-/// レイテンシ整合のため、全波形を1クロック遅延させて出力
-/// レイテンシー: 1クロック
+/// Sineは線形補間付きLUT (3クロック)、他は組み合わせ回路
+/// レイテンシ整合のため、Sine以外の波形を3クロック遅延させて出力
+/// レイテンシー: 3クロック
 pub module MultiWaveCore (
     clk       : input   clock                                                                        , /// クロック
     phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
@@ -34,7 +34,7 @@ pub module MultiWaveCore (
     inst saw_out     : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
     inst square_out  : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
 
-    // サイン波コア (線形補間、1クロック遅延あり)
+    // サイン波コア (線形補間、3クロック遅延あり)
     inst sine_core: SineWaveLerpCore (
         clk            ,
         phase          ,
@@ -60,11 +60,21 @@ pub module MultiWaveCore (
         audio     : square_out,
     );
 
-    // 波形選択用レジスタ (1クロック遅延でサイン波とタイミング整合)
+    // 波形選択用レジスタ (3クロック遅延でサイン波とタイミング整合)
     var triangle_out_d: gndless_fixedpoint::Q4_23::Raw;
     var saw_out_d     : gndless_fixedpoint::Q4_23::Raw;
     var square_out_d  : gndless_fixedpoint::Q4_23::Raw;
     var wave_type_d   : WaveType                      ;
+
+    var triangle_out_d2: gndless_fixedpoint::Q4_23::Raw;
+    var saw_out_d2     : gndless_fixedpoint::Q4_23::Raw;
+    var square_out_d2  : gndless_fixedpoint::Q4_23::Raw;
+    var wave_type_d2   : WaveType                      ;
+
+    var triangle_out_d3: gndless_fixedpoint::Q4_23::Raw;
+    var saw_out_d3     : gndless_fixedpoint::Q4_23::Raw;
+    var square_out_d3  : gndless_fixedpoint::Q4_23::Raw;
+    var wave_type_d3   : WaveType                      ;
 
     always_ff (clk) {
         triangle_out_d = triangle_out.raw;
@@ -73,13 +83,27 @@ pub module MultiWaveCore (
         wave_type_d    = wave_type;
     }
 
+    always_ff (clk) {
+        triangle_out_d2 = triangle_out_d;
+        saw_out_d2      = saw_out_d;
+        square_out_d2   = square_out_d;
+        wave_type_d2    = wave_type_d;
+    }
+
+    always_ff (clk) {
+        triangle_out_d3 = triangle_out_d2;
+        saw_out_d3      = saw_out_d2;
+        square_out_d3   = square_out_d2;
+        wave_type_d3    = wave_type_d2;
+    }
+
     // 波形選択マルチプレクサ
     always_comb {
-        case wave_type_d {
+        case wave_type_d3 {
             Sine    : audio.raw = sine_out.raw;
-            Triangle: audio.raw = triangle_out_d;
-            Saw     : audio.raw = saw_out_d;
-            Pwm     : audio.raw = square_out_d;
+            Triangle: audio.raw = triangle_out_d3;
+            Saw     : audio.raw = saw_out_d3;
+            Pwm     : audio.raw = square_out_d3;
             default : audio.raw = sine_out.raw;
         }
     }
@@ -88,8 +112,8 @@ pub module MultiWaveCore (
 /// 波形選択式オシレーター
 /// 4種類の波形（Sine, Triangle, Saw, Pwm）を切り替え可能
 /// Sineは線形補間付きLUT、他は組み合わせ回路
-/// 波形切り替え時のレイテンシ整合のため、全波形を1クロック遅延させて出力
-/// レイテンシー: 1クロック
+/// 波形切り替え時のレイテンシ整合のため、Sine以外を3クロック遅延させて出力
+/// レイテンシー: 3クロック
 pub module MultiWaveOscillator (
     clk       : input   clock                                                                        , /// クロック
     phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
