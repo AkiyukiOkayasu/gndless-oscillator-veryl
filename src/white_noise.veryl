@@ -1,15 +1,19 @@
-/// White Noise Generator (Xorshift32 Algorithm)
+/// ホワイトノイズジェネレーター (Xorshift32 Algorithm)
 ///
-/// Generates high-quality pseudo-random numbers suitable for audio noise.
-/// No reset signal required. Initializes with a non-zero seed on power-up.
+/// オーディオ用の高品質な疑似乱数ノイズを生成する。
+/// リセット信号は不要で、起動後に非ゼロのシードで初期化される。
+///
+/// 出力スケーリング:
+///   rng_state をQ1.31として解釈した値の8bit算術右シフトを bit slice で直接Q4.23へ変換
+///   RMS ≈ 1/√3 ≈ 0.577 (-4.8dBFS)
+///
+/// レイテンシー: 3クロック (全wave core統一)
 pub module WhiteNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
     clk  : input   clock                                                                        , /// クロック
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
-    import gndless_fixedpoint::Types::{RoundingMode, OverflowMode};
-
     // Initial value (Seed) must be non-zero.
     // rng_stateが0の場合、Xorshift32アルゴリズムが停止してしまうため、初期値として非ゼロ値を設定する。
     var   rng_state   : logic<32>;
@@ -20,7 +24,7 @@ pub module WhiteNoise #(
     // そのため分周して、エネルギーの分布範囲が広くなりすぎないようにする。
     var cnt: u16;
 
-    always_ff {
+    always_ff (clk) {
         // クロック分周
         if (cnt == DIV - 1) {
             cnt = 0;
@@ -41,16 +45,19 @@ pub module WhiteNoise #(
         }
     }
 
-    var audio_q1: gndless_fixedpoint::Q1_31::Raw;
-    var audio_q4: gndless_fixedpoint::Q4_23::Raw;
+    // Q4.23直接生成: Q1.31としての値 {rng_state[31], rng_state[30:0]} の8bit算術右シフトは
+    // {rng_state[31] repeat 3, rng_state[31:8]} の bit slice で表せる
+    var audio_d1: gndless_fixedpoint::Q4_23::Raw;
+    var audio_d2: gndless_fixedpoint::Q4_23::Raw;
+    var audio_d3: gndless_fixedpoint::Q4_23::Raw;
+
+    always_ff (clk) {
+        audio_d1 = $signed({rng_state[msb] repeat 3, rng_state[msb:8]});
+        audio_d2 = audio_d1;
+        audio_d3 = audio_d2;
+    }
+
     always_comb {
-        audio_q1  = $signed(rng_state);
-        audio_q4  = gndless_fixedpoint::convert::<
-            gndless_fixedpoint::Q1_31    ,
-            gndless_fixedpoint::Q4_23    ,
-            RoundingMode::TOWARD_NEGATIVE,
-            OverflowMode::SATURATE       ,
-        >(audio_q1); // Q1.31 -> Q4.23
-        audio.raw = audio_q4;
+        audio.raw = audio_d3;
     }
 }

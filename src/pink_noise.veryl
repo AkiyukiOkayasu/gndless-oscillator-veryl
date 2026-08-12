@@ -9,8 +9,10 @@
 ///   50MHz/200分周(250kHz)前提で約0.015Hz = サブオーディオ帯域まで余裕を持ってカバー
 ///
 /// 出力スケーリング:
-///   24行のQ1.31和 → ÷8(>>3) → Q8.24変換(>>>7) = 合計>>>10
+///   24行のQ4.23和 (各行はQ1.31解釈の8bit算術右シフト相当) → ÷8(>>>3) = 合計>>>11相当
 ///   RMS ≈ √(24/3)/8 ≈ 0.35 (WhiteNoise比 -4.2dB)
+///
+/// レイテンシー: 3クロック (全wave core統一)
 pub module PinkNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
@@ -31,7 +33,7 @@ pub module PinkNoise #(
     // 各行のラッチ値 [24]
     var rows: logic<32> [24];
 
-    always_ff {
+    always_ff (clk) {
         if cnt == DIV - 1 {
             cnt = 0;
 
@@ -61,14 +63,29 @@ pub module PinkNoise #(
     }
 
     // 全行の加算とスケーリング
-    // 24行のQ1.31和 → ÷8(>>3) → Q4.23変換(>>>13) = 合計>>>16
-    var sum: signed logic<37>;
+    // 各行をQ4.23 (27bit) へ変換して加算し、÷8 (>>>3) で27bitへ縮小する
+    // Q1.31解釈の値 {rows[k][31], rows[k][30:0]} の8bit算術右シフトは
+    // {rows[k][31] repeat 3, rows[k][31:8]} の bit slice で表せる
+    var sum: signed logic<32>;
 
     always_comb {
         sum = 0;
         for k in 0..24 {
-            sum = sum + $signed(rows[k]);
+            sum = sum + ($signed({rows[k][msb] repeat 3, rows[k][msb:8]}) as 32);
         }
-        audio.raw = (sum >>> 16) as 27;
+    }
+
+    var audio_d1: gndless_fixedpoint::Q4_23::Raw;
+    var audio_d2: gndless_fixedpoint::Q4_23::Raw;
+    var audio_d3: gndless_fixedpoint::Q4_23::Raw;
+
+    always_ff (clk) {
+        audio_d1 = (sum >>> 3) as 27;
+        audio_d2 = audio_d1;
+        audio_d3 = audio_d2;
+    }
+
+    always_comb {
+        audio.raw = audio_d3;
     }
 }
