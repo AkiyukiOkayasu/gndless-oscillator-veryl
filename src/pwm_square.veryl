@@ -1,23 +1,34 @@
 /// 矩形波生成コアモジュール
-/// 位相入力から波形を生成する純粋な変換モジュール
-/// 全て組み合わせ回路で実装しているため遅延ゼロ
+/// 位相入力から波形を生成する変換モジュール
+/// レイテンシー: 3クロック (全wave core統一)
 pub module SquareWaveCore (
+    clk       : input   clock                                                                        , /// クロック
     phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
     duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// デューティ比 位相のどこまで High にするか (0 ~ 2^32-1)
     audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
-    always_comb {
+    var audio_d1: gndless_fixedpoint::Q4_23::Raw;
+    var audio_d2: gndless_fixedpoint::Q4_23::Raw;
+    var audio_d3: gndless_fixedpoint::Q4_23::Raw;
+
+    always_ff (clk) {
         // phase が しきい値(duty_cycle) より小さい間は High
         if phase <: duty_cycle {
-            audio.raw = gndless_fixedpoint::Q4_23::ONE;
+            audio_d1 = gndless_fixedpoint::Q4_23::ONE;
         } else {
-            audio.raw = gndless_fixedpoint::Q4_23::NEG_ONE;
+            audio_d1 = gndless_fixedpoint::Q4_23::NEG_ONE;
         }
+        audio_d2 = audio_d1;
+        audio_d3 = audio_d2;
+    }
+
+    always_comb {
+        audio.raw = audio_d3;
     }
 }
 
 /// PWM変調可能な矩形波オシレーター
-/// 全て組み合わせ回路で実装しているため遅延ゼロ
+/// レイテンシー: 3クロック (全wave core統一)
 pub module PwmSquareOscillator (
     clk       : input   clock                                                                        , /// クロック
     phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
@@ -30,32 +41,38 @@ pub module PwmSquareOscillator (
     inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
 
     // 矩形波生成
-    inst core: SquareWaveCore ( phase, duty_cycle, audio );
+    inst core: SquareWaveCore ( clk, phase, duty_cycle, audio );
 }
 
 /// 矩形波コアのしきい値判定を検証
 #[test(test_square_wave_core)]
 module test_square_wave_core {
+    inst clk: $tb::clock_gen;
+
     var phase     : gndless_nco::Phase::phase_t;
     var duty_cycle: gndless_nco::Phase::phase_t;
     inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
 
-    inst dut: SquareWaveCore ( phase, duty_cycle, audio );
+    inst dut: SquareWaveCore ( clk, phase, duty_cycle, audio );
 
     initial {
         duty_cycle = 32'h4000_0000;
 
         phase = 32'h0000_0000;
+        clk.next(3);
         $assert(audio.raw == gndless_fixedpoint::Q4_23::ONE, "矩形波のHigh区間が不正です");
 
         phase = 32'h3FFF_FFFF;
+        clk.next(3);
         $assert(audio.raw == gndless_fixedpoint::Q4_23::ONE, "矩形波のHigh区間終端が不正です");
 
         phase = 32'h4000_0001;
+        clk.next(3);
         $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "矩形波のLow区間が不正です");
 
         duty_cycle = 32'h0000_0000;
         phase      = 32'h0000_0001;
+        clk.next(3);
         $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "デューティ0の矩形波がHighになっています");
 
         $finish();
