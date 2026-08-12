@@ -1,7 +1,7 @@
 /// サイン波生成コアモジュール (LUTのみ)
 /// 位相入力から波形を生成する純粋な変換モジュール
 /// 第一象限(0~90度)の波形データ10bit分をROMに持っているので、実質的な分解能は12bit相当
-/// レイテンシー: 3クロック (全wave core統一。BRAM読み出し1 + 遅延整合2)
+/// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineWaveCore (
     clk  : input   clock                                                                        , /// クロック
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
@@ -40,29 +40,20 @@ pub module SineWaveCore (
     );
 
     // ----------------------------------------------------
-    // Q1.23 → Q4.23 符号拡張と遅延整合 (全wave coreで3クロックに統一)
+    // Q1.23 → Q4.23 符号拡張 (組み合わせ) と象限の遅延
     // ----------------------------------------------------
-    var val        : gndless_fixedpoint::Q4_23::Raw   ;
-    var quadrant_d : logic                         <2>;
-    var val_d2     : gndless_fixedpoint::Q4_23::Raw   ;
-    var quadrant_d2: logic                         <2>;
+    var quadrant_d: logic<2>;
 
     always_ff (clk) {
-        val        = $std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(rom_data);
         quadrant_d = quadrant;
-    }
-
-    always_ff (clk) {
-        val_d2      = val;
-        quadrant_d2 = quadrant_d;
     }
 
     // 第3・第4象限はマイナス側
     always_comb {
-        if quadrant_d2[1] {
-            audio.raw = -val_d2;
+        if quadrant_d[1] {
+            audio.raw = -$std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(rom_data);
         } else {
-            audio.raw = val_d2;
+            audio.raw = $std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(rom_data);
         }
     }
 }
@@ -192,7 +183,7 @@ pub module SineWaveLerpCore (
 /// サイン波オシレーター (LUTのみ)
 /// テーブル引きのサイン波
 /// 第一象限(0~90度)の波形データ10bit分をROMに持っているので、実質的な分解能は12bit相当
-/// レイテンシー: 3クロック (全wave core統一)
+/// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineOscillator (
     clk       : input   clock                                                                        , /// クロック
     phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
@@ -209,7 +200,7 @@ pub module SineOscillator (
 
 /// サイン波オシレーター (LUT + 線形補間)
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
-/// レイテンシー: 3クロック (全wave core統一)
+/// レイテンシー: 3クロック (ROM | diff+係数 | 乗算+加算・符号の3段pipeline)
 pub module SineOscillatorLerp (
     clk       : input   clock                                                                        , /// クロック
     phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
@@ -237,23 +228,23 @@ module test_sine_wave_core {
 
     initial {
         phase = 32'h0000_0000;
-        clk.next(3);
+        clk.next(1);
         $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "sine 0deg mismatch");
 
         phase = 32'h2000_0000;
-        clk.next(3);
+        clk.next(1);
         $assert(audio.raw == 27'sd5931640, "sine 45deg mismatch");
 
         phase = 32'h4000_0000;
-        clk.next(3);
+        clk.next(1);
         $assert(audio.raw == 27'sd8388597, "sine 90deg mismatch");
 
         phase = 32'h8000_0000;
-        clk.next(3);
+        clk.next(1);
         $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "sine 180deg mismatch");
 
         phase = 32'hC000_0000;
-        clk.next(3);
+        clk.next(1);
         $assert(audio.raw == -27'sd8388597, "sine 270deg mismatch");
 
         $finish();

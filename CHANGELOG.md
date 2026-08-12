@@ -2,11 +2,11 @@
 
 ## [0.4.0]
 
-- 破壊的変更: 全wave core (sine/triangle/saw/square/noise) のレイテンシーを3クロックに統一。MultiWaveCoreの波形選択を組み合わせmux化し、wave_type/duty_cycleは0クロックで反映 (phase→audioのみ3クロック)
+- 破壊的変更: 各wave coreは自然なレイテンシーを持つ (sine LUT: 1クロック、lerp: 3クロック、他: 0クロック)。遅延整列は行わない (MultiWaveCoreの波形切替時はSineと他波形で位相が最大3クロックずれるが可聴域外)
 - 破壊的変更: サイン波ROMをQ1.23 (1024×24bit) へ縮小。内部のQ1.31経由`convert()`を廃止し、全波形をQ4.23ドメインのシフト・bit sliceで直接生成
 - 破壊的変更: lerpの補間乗算を27bit×18bit (Q1.17係数) へ縮小し、ROM | diff+係数 | 乗算+加算の3段pipeline化。90度端点のピーク平坦化 (10LSB) を解消
 - fix: pink noiseの出力スケーリングを修正 (Q8.24→Q4.23変更時の`>>>16`を`>>>11`相当へ。設計比32倍の過減衰を解消)
-- add: sine / multi_wave / noise のnative testを追加。既存のsaw/tri/square testは3クロック駆動へ更新
+- add: sine / multi_wave / noise のnative testを追加
 
 ## [0.3.0]
 

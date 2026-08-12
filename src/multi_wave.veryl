@@ -15,8 +15,10 @@ pub package WaveTypes {
 
 /// マルチ波形生成コアモジュール
 /// 位相入力から4種類の波形（Sine, Triangle, Saw, Pwm）を生成し、選択出力
-/// 全coreが同一レイテンシー (3クロック) のため、波形選択は組み合わせmuxでよい
-/// レイテンシー: phase→audio は3クロック、wave_type/duty_cycle→audio は0クロック (組み合わせ)
+/// 各波形は自然なレイテンシーのまま出力される:
+///   Sine (線形補間): 3クロック、Triangle/Saw/Pwm: 0クロック (組み合わせ)
+/// 波形切替は組み合わせmuxで即時反映される。Sineと他波形の間では位相が最大3クロック分
+/// ずれるが、位相誤差は1度未満 (50MHz・20kHzで約0.4度) で可聴域外のため整列は行わない。
 pub module MultiWaveCore (
     clk       : input   clock                                                                        , /// クロック
     phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
@@ -40,29 +42,26 @@ pub module MultiWaveCore (
         audio: sine_out,
     );
 
-    // 三角波コア (3クロック)
+    // 三角波コア (組み合わせ、0クロック)
     inst triangle_core: TriangleWaveCore (
-        clk                ,
         phase              ,
         audio: triangle_out,
     );
 
-    // ノコギリ波コア (3クロック)
+    // ノコギリ波コア (組み合わせ、0クロック)
     inst saw_core: SawWaveCore (
-        clk           ,
         phase         ,
         audio: saw_out,
     );
 
-    // 矩形波コア (3クロック)
+    // 矩形波コア (組み合わせ、0クロック)
     inst square_core: SquareWaveCore (
-        clk                   ,
         phase                 ,
         duty_cycle            ,
         audio     : square_out,
     );
 
-    // 波形選択マルチプレクサ (全coreが3クロックで整合しているため組み合わせ)
+    // 波形選択マルチプレクサ (各波形の自然なレイテンシーのまま選択)
     always_comb {
         case wave_type {
             Sine    : audio.raw = sine_out.raw;
@@ -76,8 +75,7 @@ pub module MultiWaveCore (
 
 /// 波形選択式オシレーター
 /// 4種類の波形（Sine, Triangle, Saw, Pwm）を切り替え可能
-/// 全coreが同一レイテンシー (3クロック) のため、波形切り替えは即時反映される
-/// レイテンシー: 3クロック
+/// 波形切替は組み合わせmuxで即時反映される (Sineのみ3クロックのレイテンシー)
 pub module MultiWaveOscillator (
     clk       : input   clock                                                                        , /// クロック
     phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
@@ -97,12 +95,11 @@ pub module MultiWaveOscillator (
     inst core: MultiWaveCore ( clk, phase, wave_type, duty_cycle, audio );
 }
 
-/// MultiWaveCoreのレイテンシー一致を検証
-/// 全coreが3クロックのため、位相変更後3クロックまでは旧値のまま、3クロック後に新値が出る。
-/// また wave_type は組み合わせmuxのため即時 (0クロック) で切り替わる。
+/// MultiWaveCoreの波形切替とレイテンシーを検証
+/// Triangle/Saw/Pwm は組み合わせ (0クロック)、Sine は3クロック (lerp)。
 /// 期待値: 45度 (phase=0x2000_0000) で sine=5931640 / triangle=-4194304 / saw=-6291456 / square=ONE (duty=0x4000_0000)
-#[test(test_multi_wave_core_latency)]
-module test_multi_wave_core_latency {
+#[test(test_multi_wave_core)]
+module test_multi_wave_core {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;
 
@@ -117,28 +114,28 @@ module test_multi_wave_core_latency {
 
     initial {
         duty_cycle = 32'h4000_0000;
-
-        phase     = 32'h0000_0000;
-        wave_type = WaveType::Triangle;
-        clk.next(3);
+        phase      = 32'h0000_0000;
+        wave_type  = WaveType::Triangle;
         $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "triangle 0deg mismatch");
 
-        // 位相変更後、3クロック経過するまでは前の値のまま (全coreのlatency 3)
-        phase = 32'h2000_0000;
-        clk.next(1);
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "latency 3違反 (1クロック後)");
-        clk.next(1);
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "latency 3違反 (2クロック後)");
-        clk.next(1);
-        $assert(audio.raw == -27'sd4194304, "triangle 45deg mismatch");
-
-        // wave_typeは組み合わせで即時切り替わる
-        wave_type = WaveType::Sine;
-        $assert(audio.raw == 27'sd5931640, "sine 45deg mismatch");
         wave_type = WaveType::Saw;
-        $assert(audio.raw == -27'sd6291456, "saw 45deg mismatch");
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "saw 0deg mismatch");
+
         wave_type = WaveType::Pwm;
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::ONE, "square 45deg mismatch");
+        $assert(audio.raw == gndless_fixedpoint::Q4_23::ONE, "square 0deg mismatch");
+
+        // Sine は3クロック (lerp)
+        phase     = 32'h2000_0000;
+        wave_type = WaveType::Sine;
+        clk.next(3);
+        $assert(audio.raw == 27'sd5931640, "sine 45deg after 3clk mismatch");
+
+        // 組み合わせ波形は即時反映
+        wave_type = WaveType::Triangle;
+        $assert(audio.raw == -27'sd4194304, "triangle 45deg immediate mismatch");
+
+        wave_type = WaveType::Saw;
+        $assert(audio.raw == -27'sd6291456, "saw 45deg immediate mismatch");
 
         $finish();
     }

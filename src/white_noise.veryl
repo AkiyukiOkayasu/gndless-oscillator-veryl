@@ -4,10 +4,10 @@
 /// リセット信号は不要で、起動後に非ゼロのシードで初期化される。
 ///
 /// 出力スケーリング:
-///   rng_state をQ1.31として解釈した値の8bit算術右シフトを bit slice で直接Q4.23へ変換
+///   rng_state をQ1.31として解釈した値の8bit算術右シフトを直接Q4.23へ変換
 ///   RMS ≈ 1/√3 ≈ 0.577 (-4.8dBFS)
 ///
-/// レイテンシー: 3クロック (全wave core統一)
+/// レイテンシー: 0クロック (rng_stateの更新と同時に出力が更新される)
 pub module WhiteNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
@@ -48,18 +48,8 @@ pub module WhiteNoise #(
     // Q4.23直接生成: Q1.31としての値の8bit算術右シフト
     // 注: $signed(concat) の幅拡張castはsim backendで符号拡張されないため、
     //      $signed(rng_state) >>> 8 の算術シフトで表現する
-    var audio_d1: gndless_fixedpoint::Q4_23::Raw;
-    var audio_d2: gndless_fixedpoint::Q4_23::Raw;
-    var audio_d3: gndless_fixedpoint::Q4_23::Raw;
-
-    always_ff (clk) {
-        audio_d1 = ($signed(rng_state) >>> 8) as 27;
-        audio_d2 = audio_d1;
-        audio_d3 = audio_d2;
-    }
-
     always_comb {
-        audio.raw = audio_d3;
+        audio.raw = ($signed(rng_state) >>> 8) as 27;
     }
 }
 
@@ -78,8 +68,8 @@ module test_white_noise_level {
 
     initial {
         // rng_state初期値は0のため、初回更新 (8クロック後) でINITIAL_SEEDに初期化される。
-        // 出力はrng_stateから3クロック遅延するため、+3してからサンプリングする。
-        clk.next(8 + 3);
+        // 出力は組み合わせなので更新と同時にサンプリングできる。
+        clk.next(8);
         for _ in 0..2048 {
             if audio.raw <: 0 {
                 acc = acc + ((-audio.raw) as u64);
