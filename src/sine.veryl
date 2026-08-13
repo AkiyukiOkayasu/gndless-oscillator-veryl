@@ -124,7 +124,7 @@ pub module SineWaveLerpCore (
     // stage 1: 差分・係数 (ROM読み出し結果から1クロック後)
     // ----------------------------------------------------
     // 最後のスライス (idx==1023) は 90° ちょうどの値 Q1_23::MAX との補間にする
-    // (テーブル末尾は sin(1023h) = cos(h) なので、このまま補間するとピークが10LSB平らになる)
+    // (テーブル末尾は sin(1023h) = cos(h) のため、このまま補間するとピークが10LSB平らになる。)
     var val_b_eff: gndless_fixedpoint::Q1_23::Raw;
     always_comb {
         if idx == 10'd1023 {
@@ -200,7 +200,7 @@ pub module SineOscillator (
 
 /// サイン波オシレーター (LUT + 線形補間)
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
-/// レイテンシー: 3クロック (ROM | diff+係数 | 乗算+加算・符号の3段pipeline)
+/// レイテンシー: 3クロック (ROM読み出し | diff+係数 | 乗算。加算・符号は乗算後の組み合わせ)
 pub module SineOscillatorLerp (
     clk       : input   clock                                                                        , /// クロック
     phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
@@ -297,8 +297,8 @@ module test_sine_wave_lerp_core {
 
 /// サイン波コア (線形補間) の連続位相更新時 (オシレーター実動作) の出力連続性を検証
 /// 位相ステップ2^14あたりの最大変化量 ≈ 2π * 2^14 / 2^32 * 2^23 ≈ 201 LSB。
-/// 3段pipelineのタイミング不整合 (stale値混入) があると10^6オーダーの不連続が出るため、
-/// 上限1024 LSBで検出する。位相は32bitで自然にラップする (サインは周期関数)。
+/// 3段pipelineのタイミング不整合があると10^6オーダーの不連続が出るため、上限1024 LSBで検出する。
+/// 位相は32bitで自然にラップする (サインは周期関数)。
 #[test(test_sine_wave_lerp_core_sweep)]
 module test_sine_wave_lerp_core_sweep {
     inst clk: $tb::clock_gen;

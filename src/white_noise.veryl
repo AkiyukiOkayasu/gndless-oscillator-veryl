@@ -19,8 +19,8 @@ pub module WhiteNoise #(
     const INITIAL_SEED: u32       = 32'h2463_5345;
 
     // クロック分周カウンター
-    // 分周によりノイズが広がる帯域を制限する。分周しないとノイズエネルギーが可聴帯域の
-    // 外まで拡散し、後段のLPF後に振幅が小さくなりすぎるため
+    // 分周によりノイズが広がる帯域を制限する。
+    // 分周しないとノイズエネルギーが可聴帯域の外まで拡散し、後段のLPF後に振幅が小さくなりすぎるため。
     var cnt: u16;
 
     always_ff (clk) {
@@ -44,8 +44,8 @@ pub module WhiteNoise #(
         }
     }
 
-    // Q4.23の±1.0: rng_stateをQ1.31 (符号=rng[31]) と解釈し、8bit右シフトでQ4.23へスケーリングする
-    // (配線のみ: 符号4bit拡張 + 上位23bit。下位8bitはxorshift32のランダム性が弱いため切り捨て)
+    // Q4.23の±1.0: rng_stateをQ1.31 (符号=rng[31]) と解釈し、8bit右シフトでQ4.23へスケーリングする (配線のみ)。
+    // 下位8bitはxorshift32のランダム性が弱いため切り捨て、上位23bitを使用する。
     always_comb {
         audio.raw = $signed({rng_state[msb] repeat 4, rng_state[msb - 1:8]});
     }
