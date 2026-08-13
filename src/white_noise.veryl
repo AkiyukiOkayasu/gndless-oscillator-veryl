@@ -45,11 +45,11 @@ pub module WhiteNoise #(
         }
     }
 
-    // Q4.23直接生成: Q1.31としての値の8bit算術右シフト
-    // 注: $signed(concat) の幅拡張castはsim backendで符号拡張されないため、
-    //      $signed(rng_state) >>> 8 の算術シフトで表現する
+    // Q4.23直接生成: rng_stateの上位24bit [31:8] を符号拡張して27bitへ
+    // (xorshift32は下位ビットのランダム性が劣るため上位を使う)
+    // 定数シフト・sliceはどちらも純粋な配線だが、範囲選択の方が意図が明示的
     always_comb {
-        audio.raw = ($signed(rng_state) >>> 8) as 27;
+        audio.raw = $signed({rng_state[msb] repeat 3, rng_state[msb:8]});
     }
 }
 
