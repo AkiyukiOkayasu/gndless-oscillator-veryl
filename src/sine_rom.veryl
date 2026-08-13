@@ -1,6 +1,7 @@
 /// 0度〜90度分のサイン波データ (Q1.23絶対値) をSingle Portで読み出す版
 /// サイズ: 1024ワード (addr: 10bit)、値域 0〜2^23-1
-/// データは tools/sinetable/main.py で生成し、2つのROM moduleへコピーする
+/// テーブル: table[i] = floor((2^23-1) × sin(i × π/2048)) (i = 0..1023)
+/// tools/sinetable/main.py で生成し、変更時はこの2つのROM moduleのmemを両方更新する
 module SineRomQuarter (
     clk : input  clock                             , /// クロック
     addr: input  logic                         <10>, /// 10bitアドレス入力

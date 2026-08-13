@@ -14,14 +14,13 @@ pub module WhiteNoise #(
     clk  : input   clock                                                                        , /// クロック
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
-    // Initial value (Seed) must be non-zero.
-    // rng_stateが0の場合、Xorshift32アルゴリズムが停止してしまうため、初期値として非ゼロ値を設定する。
+    // rng_stateが0だとXorshift32が停止するため、非ゼロの初期値を使う (更新時に0ならINITIAL_SEEDへ置換)
     var   rng_state   : logic<32>;
     const INITIAL_SEED: u32       = 32'h2463_5345;
 
     // クロック分周カウンター
-    // たとえばclkが50MHzの場合、100kHz程度でLPFを通すと振幅が小さくなりすぎる。
-    // そのため分周して、エネルギーの分布範囲が広くなりすぎないようにする。
+    // 分周によりノイズが広がる帯域を制限する。分周しないとノイズエネルギーが可聴帯域の
+    // 外まで拡散し、後段のLPF後に振幅が小さくなりすぎるため
     var cnt: u16;
 
     always_ff (clk) {
@@ -45,10 +44,8 @@ pub module WhiteNoise #(
         }
     }
 
-    // Q4.23直接生成: rng_stateをQ1.31 (符号=rng[31]) と解釈し、8bit右シフトでQ4.23へスケーリングする
-    // binary pointは出力bit22。データ部 rng[30:8] が出力の [22:0] にそのまま乗る
-    // 8bit右シフトは配線のみ: {符号rng[31]を4回複製, データ23bit} = 27bit (値域 ±2^23 = ±1.0)
-    // xorshift32は下位ビットのランダム性が劣るため上位23bitを使用する
+    // Q4.23の±1.0: rng_stateをQ1.31 (符号=rng[31]) と解釈し、8bit右シフトでQ4.23へスケーリングする
+    // (配線のみ: 符号4bit拡張 + 上位23bit。下位8bitはxorshift32のランダム性が弱いため切り捨て)
     always_comb {
         audio.raw = $signed({rng_state[msb] repeat 4, rng_state[msb - 1:8]});
     }
@@ -56,7 +53,7 @@ pub module WhiteNoise #(
 
 /// ホワイトノイズの出力レベルを検証
 /// 一様分布 [-1, 1) のmean-abs ≈ 0.5 なので、Q4.23で ≈ 0.5 * 2^23 = 4194304。
-/// 許容範囲 [0.45, 0.55] * 2^23 で、2048サンプルの統計誤差 (3σ≈1%) を吸収する。
+/// 許容範囲 [0.45, 0.55] * 2^23 で、2048サンプルの平均の標準偏差 (σ≈0.6%、3σ≈2%) を吸収する。
 #[test(test_white_noise_level)]
 module test_white_noise_level {
     inst clk  : $tb::clock_gen;

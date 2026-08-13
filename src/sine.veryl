@@ -62,7 +62,7 @@ pub module SineWaveCore (
 /// 位相入力から波形を生成する純粋な変換モジュール
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
 /// 補間は27bit × 18bit (Q1.17係数) の乗算を使う
-/// レイテンシー: 3クロック (ROM | diff+係数 | 乗算+加算・符号の3段pipeline)
+/// レイテンシー: 3クロック (ROM読み出し | diff+係数 | 乗算。加算・符号は乗算後の組み合わせ)
 pub module SineWaveLerpCore (
     clk  : input   clock                                                                        , /// クロック
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
@@ -216,7 +216,7 @@ pub module SineOscillatorLerp (
 }
 
 /// サイン波コアの位相変換とレイテンシーを検証
-/// 期待値はSineRomDataのテーブル値 (table[512] = 0x5A8278 = 5931640、table[1023] = 0x7FFFF5 = 8388597)
+/// 期待値はSineRomQuarterのテーブル値 (table[512] = 0x5A8278 = 5931640、table[1023] = 0x7FFFF5 = 8388597)
 #[test(test_sine_wave_core)]
 module test_sine_wave_core {
     inst clk: $tb::clock_gen;

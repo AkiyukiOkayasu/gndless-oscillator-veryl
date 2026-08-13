@@ -1,6 +1,6 @@
 /// 三角波生成コアモジュール
 /// 位相入力から波形を生成する純粋な変換モジュール
-/// Q4.23をbit sliceで直接生成する (Q1.31経由のconvert相当を不要化)
+/// Q4.23の値をbit sliceで直接生成する (中間のQ1.31変換を介さない)
 /// レイテンシー: 0クロック (組み合わせ)
 pub module TriangleWaveCore (
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)

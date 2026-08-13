@@ -1,13 +1,13 @@
 /// ノコギリ波生成コアモジュール
 /// 位相入力から波形を生成する純粋な変換モジュール
-/// Q4.23をbit sliceで直接生成する (Q1.31経由のconvert相当を不要化)
+/// Q4.23の値をbit sliceで直接生成する (中間のQ1.31変換を介さない)
 /// レイテンシー: 0クロック (組み合わせ)
 pub module SawWaveCore (
     phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力
     audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // 位相のMSBを反転させることで、Q4.23形式のノコギリ波を直接生成する
-    // 0x0000_0000 (0度)  -> 0xF800_000 (負の最大 = -1.0)
+    // 0x0000_0000 (0度)  -> 0x780_0000 (負の最大 = -1.0)
     // 0x8000_0000 (180度) -> 0x000_0000 (0.0)
     // 0xFFFF_FFFF (360度) -> 0x07F_FFFF (正の最大 = +1.0)
     // Q1.31形式 {~phase[31], phase[30:0]} の8bit算術右シフト相当を bit slice で表現:
