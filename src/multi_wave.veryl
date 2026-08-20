@@ -1,3 +1,8 @@
+import gndless_fixedpoint::FixedPointValue;
+import gndless_fixedpoint::Q4_23;
+import gndless_nco::Phase;
+import gndless_nco::Phasor;
+
 /// 波形タイプを定義するパッケージ
 pub package WaveTypes {
     /// 波形タイプを表す列挙型
@@ -22,20 +27,20 @@ pub package WaveTypes {
 /// この差は楽器用途では音色に影響しないため、遅延整列は行わない。
 /// 可聴性の分析はREADME「レイテンシー契約」を参照。
 pub module MultiWaveCore (
-    clk       : input   clock                                                                        , /// クロック
-    phase     : input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
-    wave_type : input   WaveType                                                                     , /// 波形タイプ選択
-    duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk       : input   clock                                , /// クロック
+    phase     : input   Phase::phase_t                       , /// 位相入力 (0 ~ 2^32-1)
+    wave_type : input   WaveType                             , /// 波形タイプ選択
+    duty_cycle: input   Phase::phase_t                       , /// PWMデューティ比 (Pwm以外では無視)
+    audio     : modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;
 
     // 各波形コアの出力
-    inst sine_out    : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
-    inst triangle_out: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
-    inst saw_out     : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
-    inst square_out  : gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst sine_out    : FixedPointValue::<Q4_23>;
+    inst triangle_out: FixedPointValue::<Q4_23>;
+    inst saw_out     : FixedPointValue::<Q4_23>;
+    inst square_out  : FixedPointValue::<Q4_23>;
 
     // サイン波コア (線形補間、3クロック)
     inst sine_core: SineWaveLerpCore (
@@ -79,19 +84,19 @@ pub module MultiWaveCore (
 /// 4種類の波形（Sine, Triangle, Saw, Pwm）を切り替え可能
 /// 波形切替は組み合わせmuxで即時反映される (Sineのみ3クロックのレイテンシー)
 pub module MultiWaveOscillator (
-    clk       : input   clock                                                                        , /// クロック
-    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
-    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量
-    wave_type : input   WaveType                                                                     , /// 波形タイプ選択
-    duty_cycle: input   gndless_nco::Phase::phase_t                                                  , /// PWMデューティ比 (Pwm以外では無視)
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk       : input   clock                                , /// クロック
+    phase_rst : input   bbool                                , /// 位相ゼロリセット (同期)
+    phase_step: input   Phase::step_t                        , /// 1クロックあたりの位相ステップ量
+    wave_type : input   WaveType                             , /// 波形タイプ選択
+    duty_cycle: input   Phase::phase_t                       , /// PWMデューティ比 (Pwm以外では無視)
+    audio     : modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     import WaveTypes::WaveType;
     import WaveTypes::WaveType::*;
 
     // 位相生成 (共通Phase::Phasor)
-    var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
+    var phase: Phase::phase_t;
+    inst phasor: Phasor ( clk, phase_rst, phase_step, phase );
 
     // マルチ波形生成コア
     inst core: MultiWaveCore ( clk, phase, wave_type, duty_cycle, audio );
@@ -107,10 +112,10 @@ module test_multi_wave_core {
 
     inst clk: $tb::clock_gen;
 
-    var phase     : gndless_nco::Phase::phase_t;
-    var wave_type : WaveType                   ;
-    var duty_cycle: gndless_nco::Phase::phase_t;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    var phase     : Phase::phase_t;
+    var wave_type : WaveType      ;
+    var duty_cycle: Phase::phase_t;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: MultiWaveCore ( clk, phase, wave_type, duty_cycle, audio );
 
@@ -118,13 +123,13 @@ module test_multi_wave_core {
         duty_cycle = 32'h4000_0000;
         phase      = 32'h0000_0000;
         wave_type  = WaveType::Triangle;
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "triangle 0deg mismatch");
+        $assert(audio.raw == Q4_23::NEG_ONE, "triangle 0deg mismatch");
 
         wave_type = WaveType::Saw;
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "saw 0deg mismatch");
+        $assert(audio.raw == Q4_23::NEG_ONE, "saw 0deg mismatch");
 
         wave_type = WaveType::Pwm;
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::ONE, "square 0deg mismatch");
+        $assert(audio.raw == Q4_23::ONE, "square 0deg mismatch");
 
         // Sine は3クロック (lerp)
         phase     = 32'h2000_0000;

@@ -1,3 +1,6 @@
+import gndless_fixedpoint::FixedPointValue;
+import gndless_fixedpoint::Q4_23;
+
 /// ピンクノイズジェネレーター (Voss-McCartney Algorithm + Xorshift32)
 ///
 /// 1/f特性を持つピンクノイズを生成する。
@@ -17,8 +20,8 @@
 pub module PinkNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
-    clk  : input   clock                                                                        , /// クロック
-    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk  : input   clock                                , /// クロック
+    audio: modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     const INIT_SEED: u32       = 32'h2463_5345;
     var   rng_state: logic<32>;
@@ -83,7 +86,7 @@ pub module PinkNoise #(
 #[test(test_pink_noise_level)]
 module test_pink_noise_level {
     inst clk  : $tb::clock_gen;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: PinkNoise #( DIV: 8 ) ( clk, audio );
 

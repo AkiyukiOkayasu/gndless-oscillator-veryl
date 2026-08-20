@@ -1,10 +1,15 @@
+import gndless_fixedpoint::FixedPointValue;
+import gndless_fixedpoint::Q4_23;
+import gndless_nco::Phase;
+import gndless_nco::Phasor;
+
 /// ノコギリ波生成コアモジュール
 /// 位相入力から波形を生成する純粋な変換モジュール
 /// Q4.23の値をbit sliceで直接生成する (中間のQ1.31変換を介さない)
 /// レイテンシー: 0クロック (組み合わせ)
 pub module SawWaveCore (
-    phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力
-    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    phase: input   Phase::phase_t                       , /// 位相入力
+    audio: modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // 位相のMSBを反転させることで、Q4.23形式のノコギリ波を直接生成する
     // 0x0000_0000 (0度)  -> 0x780_0000 (負の最大 = -1.0)
@@ -20,14 +25,14 @@ pub module SawWaveCore (
 /// ノコギリ波オシレーター
 /// レイテンシー: 0クロック (wave coreは組み合わせ)
 pub module SawOscillator (
-    clk       : input   clock                                                                        , /// クロック
-    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
-    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk       : input   clock                                , /// クロック
+    phase_rst : input   bbool                                , /// 位相ゼロリセット (同期)
+    phase_step: input   Phase::step_t                        , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
+    audio     : modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // 位相生成
-    var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
+    var phase: Phase::phase_t;
+    inst phasor: Phasor ( clk, phase_rst, phase_step, phase );
 
     // ノコギリ波生成
     inst core: SawWaveCore ( phase, audio );
@@ -36,23 +41,20 @@ pub module SawOscillator (
 /// ノコギリ波コアの位相変換を検証
 #[test(test_saw_wave_core)]
 module test_saw_wave_core {
-    var phase: gndless_nco::Phase::phase_t;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    var phase: Phase::phase_t;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: SawWaveCore ( phase, audio );
 
     initial {
         phase = 32'h0000_0000;
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::NEG_ONE, "ノコギリ波の開始点が不正です");
+        $assert(audio.raw == Q4_23::NEG_ONE, "ノコギリ波の開始点が不正です");
 
         phase = 32'h8000_0000;
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "ノコギリ波の半周期点が不正です");
+        $assert(audio.raw == Q4_23::ZERO, "ノコギリ波の半周期点が不正です");
 
         phase = 32'hFFFF_FFFF;
-        $assert(
-            audio.raw >: gndless_fixedpoint::Q4_23::ZERO && audio.raw <: gndless_fixedpoint::Q4_23::ONE,
-            "ノコギリ波の最大値付近が不正です",
-        );
+        $assert(audio.raw >: Q4_23::ZERO && audio.raw <: Q4_23::ONE, "ノコギリ波の最大値付近が不正です");
 
         $finish();
     }

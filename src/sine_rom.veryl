@@ -1,14 +1,16 @@
+import gndless_fixedpoint::Q1_23;
+
 /// 0度〜90度分のサイン波データ (Q1.23絶対値) をSingle Portで読み出す版
 /// サイズ: 1024ワード (addr: 10bit)、値域 0〜2^23-1
 /// テーブル: table[i] = floor((2^23-1) × sin(i × π/2048)) (i = 0..1023)
 /// tools/sinetable/main.py で生成し、変更時はこの2つのROM moduleのmemを両方更新する
 module SineRomQuarter (
-    clk : input  clock                             , /// クロック
-    addr: input  logic                         <10>, /// 10bitアドレス入力
-    data: output gndless_fixedpoint::Q1_23::Raw    , /// Q1.23形式の絶対値 (0 ~ 2^23-1)
+    clk : input  clock         , /// クロック
+    addr: input  logic     <10>, /// 10bitアドレス入力
+    data: output Q1_23::Raw    , /// Q1.23形式の絶対値 (0 ~ 2^23-1)
 ) {
     // メモリ配列 BRAMを想定
-    let mem: gndless_fixedpoint::Q1_23::Raw [1024] = '{
+    let mem: Q1_23::Raw [1024] = '{
         24'h000000, 24'h003243, 24'h006487, 24'h0096cb, 24'h00c90f, 24'h00fb53, 24'h012d96, 24'h015fda, 24'h01921d,
         24'h01c45f, 24'h01f6a2, 24'h0228e4, 24'h025b26, 24'h028d68, 24'h02bfa9, 24'h02f1ea, 24'h03242a, 24'h03566a,
         24'h0388a9, 24'h03bae8, 24'h03ed26, 24'h041f64, 24'h0451a1, 24'h0483dd, 24'h04b619, 24'h04e854, 24'h051a8e,
@@ -134,14 +136,14 @@ module SineRomQuarter (
 /// サイズ: 1024ワード (addr: 10bit)、値域 0〜2^23-1
 /// データは tools/sinetable/main.py で生成し、2つのROM moduleへコピーする
 module SineRomQuarterDual (
-    clk   : input  clock                             , /// クロック
-    addr_a: input  logic                         <10>, /// ポートAのアドレス入力
-    addr_b: input  logic                         <10>, /// ポートBのアドレス入力
-    data_a: output gndless_fixedpoint::Q1_23::Raw    , /// ポートAのQ1.23形式の絶対値 (0 ~ 2^23-1)
-    data_b: output gndless_fixedpoint::Q1_23::Raw    , /// ポートBのQ1.23形式の絶対値 (0 ~ 2^23-1)
+    clk   : input  clock         , /// クロック
+    addr_a: input  logic     <10>, /// ポートAのアドレス入力
+    addr_b: input  logic     <10>, /// ポートBのアドレス入力
+    data_a: output Q1_23::Raw    , /// ポートAのQ1.23形式の絶対値 (0 ~ 2^23-1)
+    data_b: output Q1_23::Raw    , /// ポートBのQ1.23形式の絶対値 (0 ~ 2^23-1)
 ) {
     // メモリ配列 BRAMを想定
-    let mem: gndless_fixedpoint::Q1_23::Raw [1024] = '{
+    let mem: Q1_23::Raw [1024] = '{
         24'h000000, 24'h003243, 24'h006487, 24'h0096cb, 24'h00c90f, 24'h00fb53, 24'h012d96, 24'h015fda, 24'h01921d,
         24'h01c45f, 24'h01f6a2, 24'h0228e4, 24'h025b26, 24'h028d68, 24'h02bfa9, 24'h02f1ea, 24'h03242a, 24'h03566a,
         24'h0388a9, 24'h03bae8, 24'h03ed26, 24'h041f64, 24'h0451a1, 24'h0483dd, 24'h04b619, 24'h04e854, 24'h051a8e,

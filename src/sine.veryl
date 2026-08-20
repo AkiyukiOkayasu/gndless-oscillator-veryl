@@ -1,11 +1,17 @@
+import gndless_fixedpoint::FixedPointValue;
+import gndless_fixedpoint::Q4_23;
+import gndless_fixedpoint::Q1_23;
+import gndless_nco::Phase;
+import gndless_nco::Phasor;
+
 /// サイン波生成コアモジュール (LUTのみ)
 /// 位相入力から波形を生成する純粋な変換モジュール
 /// 第一象限(0~90度)の波形データ10bit分をROMに持っているので、実質的な分解能は12bit相当
 /// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineWaveCore (
-    clk  : input   clock                                                                        , /// クロック
-    phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
-    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk  : input   clock                                , /// クロック
+    phase: input   Phase::phase_t                       , /// 位相入力 (0 ~ 2^32-1)
+    audio: modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // ----------------------------------------------------
     // 象限判定とROMアドレス計算
@@ -32,7 +38,7 @@ pub module SineWaveCore (
     // ----------------------------------------------------
     // ROM読み出し (0~90度の振幅データ、Q1.23)
     // ----------------------------------------------------
-    var rom_data: gndless_fixedpoint::Q1_23::Raw; // 符号なしの絶対値 (0 ~ 2^23-1)
+    var rom_data: Q1_23::Raw; // 符号なしの絶対値 (0 ~ 2^23-1)
     inst u_rom: SineRomQuarter (
         clk           ,
         addr: rom_addr,
@@ -51,9 +57,9 @@ pub module SineWaveCore (
     // 第3・第4象限はマイナス側
     always_comb {
         if quadrant_d[1] {
-            audio.raw = -$std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(rom_data);
+            audio.raw = -$std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(rom_data);
         } else {
-            audio.raw = $std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(rom_data);
+            audio.raw = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(rom_data);
         }
     }
 }
@@ -64,9 +70,9 @@ pub module SineWaveCore (
 /// 補間は27bit × 18bit (Q1.17係数) の乗算を使う
 /// レイテンシー: 3クロック (ROM読み出し | diff+係数 | 乗算。加算・符号は乗算後の組み合わせ)
 pub module SineWaveLerpCore (
-    clk  : input   clock                                                                        , /// クロック
-    phase: input   gndless_nco::Phase::phase_t                                                  , /// 位相入力 (0 ~ 2^32-1)
-    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk  : input   clock                                , /// クロック
+    phase: input   Phase::phase_t                       , /// 位相入力 (0 ~ 2^32-1)
+    audio: modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // ----------------------------------------------------
     // 象限判定と「三角波状」位相への変換 (stage 0: 組み合わせ)
@@ -110,8 +116,8 @@ pub module SineWaveLerpCore (
     }
 
     // ROM読み出し (Q1.23)
-    var val_a: gndless_fixedpoint::Q1_23::Raw; //符号なしの絶対値 (0 ~ 2^23-1)
-    var val_b: gndless_fixedpoint::Q1_23::Raw; //符号なしの絶対値 (0 ~ 2^23-1)
+    var val_a: Q1_23::Raw; //符号なしの絶対値 (0 ~ 2^23-1)
+    var val_b: Q1_23::Raw; //符号なしの絶対値 (0 ~ 2^23-1)
     inst rom: SineRomQuarterDual (
         clk          ,
         addr_a       ,
@@ -125,10 +131,10 @@ pub module SineWaveLerpCore (
     // ----------------------------------------------------
     // 最後のスライス (idx==1023) は 90° ちょうどの値 Q1_23::MAX との補間にする
     // (テーブル末尾は sin(1023h) = cos(h) のため、このまま補間するとピークが10LSB平らになる。)
-    var val_b_eff: gndless_fixedpoint::Q1_23::Raw;
+    var val_b_eff: Q1_23::Raw;
     always_comb {
         if idx == 10'd1023 {
-            val_b_eff = gndless_fixedpoint::Q1_23::MAX;
+            val_b_eff = Q1_23::MAX;
         } else {
             val_b_eff = val_b;
         }
@@ -137,15 +143,15 @@ pub module SineWaveLerpCore (
     // Formula: Out = A + (B - A) * frac
     // diff: Q4.23 (27bit) で計算 (隣接テーブル間の差は27bit signedに収まる)
     // coeff: Q1.17 (18bit signed、小数17bit) = frac上位17bit
-    var val_a_27  : gndless_fixedpoint::Q4_23::Raw    ;
-    var diff      : signed logic                  <27>;
-    var coeff     : signed logic                  <18>;
-    var quadrant_d: logic                         <2> ;
+    var val_a_27  : Q4_23::Raw      ;
+    var diff      : signed logic<27>;
+    var coeff     : signed logic<18>;
+    var quadrant_d: logic       <2> ;
 
     always_ff (clk) {
-        val_a_27   = $std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(val_a);
-        diff       = $std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(val_b_eff)
-            - $std::sign_extend::<gndless_fixedpoint::Q1_23::Raw, gndless_fixedpoint::Q4_23::Raw>(val_a);
+        val_a_27   = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
+        diff       = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
+            - $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
         coeff      = $signed({1'b0, frac[19:3]});
         quadrant_d = quadrant;
     }
@@ -185,14 +191,14 @@ pub module SineWaveLerpCore (
 /// 第一象限(0~90度)の波形データ10bit分をROMに持っているので、実質的な分解能は12bit相当
 /// レイテンシー: 1クロック (BRAM読み出し分)
 pub module SineOscillator (
-    clk       : input   clock                                                                        , /// クロック
-    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
-    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk       : input   clock                                , /// クロック
+    phase_rst : input   bbool                                , /// 位相ゼロリセット (同期)
+    phase_step: input   Phase::step_t                        , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
+    audio     : modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // 位相生成 (Phase Accumulator)
-    var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
+    var phase: Phase::phase_t;
+    inst phasor: Phasor ( clk, phase_rst, phase_step, phase );
 
     // サイン波生成
     inst core: SineWaveCore ( clk, phase, audio );
@@ -202,14 +208,14 @@ pub module SineOscillator (
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
 /// レイテンシー: 3クロック (ROM読み出し | diff+係数 | 乗算。加算・符号は乗算後の組み合わせ)
 pub module SineOscillatorLerp (
-    clk       : input   clock                                                                        , /// クロック
-    phase_rst : input   bbool                                                                        , /// 位相ゼロリセット (同期)
-    phase_step: input   gndless_nco::Phase::step_t                                                   , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
-    audio     : modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk       : input   clock                                , /// クロック
+    phase_rst : input   bbool                                , /// 位相ゼロリセット (同期)
+    phase_step: input   Phase::step_t                        , /// 1クロックあたりの位相ステップ量: step = (ターゲット周波数 * 2^48) / システムクロック周波数
+    audio     : modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // 位相生成
-    var phase: gndless_nco::Phase::phase_t;
-    inst phasor: gndless_nco::Phasor ( clk, phase_rst, phase_step, phase );
+    var phase: Phase::phase_t;
+    inst phasor: Phasor ( clk, phase_rst, phase_step, phase );
 
     // サイン波生成 (線形補間付き)
     inst core: SineWaveLerpCore ( clk, phase, audio );
@@ -221,15 +227,15 @@ pub module SineOscillatorLerp (
 module test_sine_wave_core {
     inst clk: $tb::clock_gen;
 
-    var phase: gndless_nco::Phase::phase_t;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    var phase: Phase::phase_t;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: SineWaveCore ( clk, phase, audio );
 
     initial {
         phase = 32'h0000_0000;
         clk.next(1);
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "sine 0deg mismatch");
+        $assert(audio.raw == Q4_23::ZERO, "sine 0deg mismatch");
 
         phase = 32'h2000_0000;
         clk.next(1);
@@ -241,7 +247,7 @@ module test_sine_wave_core {
 
         phase = 32'h8000_0000;
         clk.next(1);
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "sine 180deg mismatch");
+        $assert(audio.raw == Q4_23::ZERO, "sine 180deg mismatch");
 
         phase = 32'hC000_0000;
         clk.next(1);
@@ -261,15 +267,15 @@ module test_sine_wave_core {
 module test_sine_wave_lerp_core {
     inst clk: $tb::clock_gen;
 
-    var phase: gndless_nco::Phase::phase_t;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    var phase: Phase::phase_t;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: SineWaveLerpCore ( clk, phase, audio );
 
     initial {
         phase = 32'h0000_0000;
         clk.next(3);
-        $assert(audio.raw == gndless_fixedpoint::Q4_23::ZERO, "lerp 0deg mismatch");
+        $assert(audio.raw == Q4_23::ZERO, "lerp 0deg mismatch");
 
         phase = 32'h2000_0000;
         clk.next(3);
@@ -303,16 +309,16 @@ module test_sine_wave_lerp_core {
 module test_sine_wave_lerp_core_sweep {
     inst clk: $tb::clock_gen;
 
-    const STEP: gndless_nco::Phase::phase_t = 32'd16384;
+    const STEP: Phase::phase_t = 32'd16384;
 
-    var phase: gndless_nco::Phase::phase_t;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    var phase: Phase::phase_t;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: SineWaveLerpCore ( clk, phase, audio );
 
-    var prev     : gndless_fixedpoint::Q4_23::Raw    ;
-    var delta    : signed logic                  <32>;
-    var max_delta: signed logic                  <32>;
+    var prev     : Q4_23::Raw      ;
+    var delta    : signed logic<32>;
+    var max_delta: signed logic<32>;
 
     initial {
         phase     = 0;

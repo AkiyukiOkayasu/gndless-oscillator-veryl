@@ -1,3 +1,6 @@
+import gndless_fixedpoint::FixedPointValue;
+import gndless_fixedpoint::Q4_23;
+
 /// ホワイトノイズジェネレーター (Xorshift32 Algorithm)
 ///
 /// オーディオ用の高品質な疑似乱数ノイズを生成する。
@@ -11,8 +14,8 @@
 pub module WhiteNoise #(
     param DIV: u16 = 200, /// クロック分周比
 ) (
-    clk  : input   clock                                                                        , /// クロック
-    audio: modport gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>::output_port, /// 出力波形 (Q4.23形式)
+    clk  : input   clock                                , /// クロック
+    audio: modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)
 ) {
     // rng_stateが0だとXorshift32が停止するため、非ゼロの初期値を使う (更新時に0ならINITIAL_SEEDへ置換)
     var   rng_state   : logic<32>;
@@ -57,7 +60,7 @@ pub module WhiteNoise #(
 #[test(test_white_noise_level)]
 module test_white_noise_level {
     inst clk  : $tb::clock_gen;
-    inst audio: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst audio: FixedPointValue::<Q4_23>;
 
     inst dut: WhiteNoise #( DIV: 8 ) ( clk, audio );
 
