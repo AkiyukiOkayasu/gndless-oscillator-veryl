@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- `gndless_fixedpoint` と `gndless_nco` の package をトップレベル import し、`FixedPointValue` / `Q4_23` / `Q1_23` / `Phase` / `Phasor` の完全修飾パスを短縮（Veryl 0.20.3 の namespace import 機能を使用）
+
 ## [0.4.0]
 
 - 破壊的変更: 波形出力をQ4.23ドメインのシフト・bit slice・加算のみで直接生成する (Q1.31経由の`convert()`を廃止)
