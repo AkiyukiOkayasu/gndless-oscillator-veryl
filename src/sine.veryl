@@ -1,6 +1,9 @@
+import gndless_fixedpoint::Types;
 import gndless_fixedpoint::FixedPointValue;
 import gndless_fixedpoint::Q4_23;
 import gndless_fixedpoint::Q1_23;
+import gndless_fixedpoint::multiply;
+import gndless_fixedpoint::resize;
 import gndless_nco::Phase;
 import gndless_nco::Phasor;
 
@@ -157,25 +160,27 @@ pub module SineWaveLerpCore (
     }
 
     // ----------------------------------------------------
-    // stage 2: 乗算 (27bit signed × 18bit signed = 45bit)
+    // stage 2: 乗算・丸め (27bit signed × 18bit signed をQ4.23へ丸めて登録)
     // ----------------------------------------------------
-    var mult       : signed logic<45>;
+    // 積の小数ビット数は 23 + 17 = 40 なので、切り捨てで Q4.23 に戻す
+    var interp_part: signed logic<28>;
     var quadrant_d2: logic       <2> ;
 
     always_ff (clk) {
-        // 乗算の結果幅を明示するため、両オペランドを積幅 (45bit) へ拡張してから乗算する
-        mult        = (diff as 45) * (coeff as 45);
+        let product    : signed logic<45> = multiply::<27, 18>(diff, coeff);
+        interp_part = resize::<45, 40, 28, 23, Types::RoundingMode::TOWARD_NEGATIVE, Types::OverflowMode::WRAP>(
+            product,
+        );
         quadrant_d2 = quadrant_d;
     }
 
     // ----------------------------------------------------
     // stage 3: 加算・符号 (組み合わせ)
     // ----------------------------------------------------
-    // 積の小数ビット数は 23 + 17 = 40 なので、>>>17 で Q4.23 に戻してから加算
     // interp は val_a と val_b の間に収まり27bitに飽和しないため sat 不要
     var interp: signed logic<27>;
     always_comb {
-        interp = (val_a_27 as 28 + (mult >>> 17)) as 27;
+        interp = (val_a_27 as 28 + interp_part) as 27;
 
         // 第3・第4象限はマイナス側
         if quadrant_d2[1] {
