@@ -11,4 +11,4 @@ uv run main.py
 
 ## 生成されるファイル
 
-- sine_data.txt: sine_rom.verylの2つのROM module (`SineRomQuarter` / `SineRomQuarterDual`) の`mem`変数へコピーすること
+- sine_data.txt: sine_rom.verylの`SineRomData::TABLE`へコピーすること (`SineRomQuarter` / `SineRomQuarterDual`はこのテーブルを参照する)
