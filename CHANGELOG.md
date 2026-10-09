@@ -1,9 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.1] - 2026-10-09
 
 ### Changed
 
+- 公開API・波形出力・latencyに変更なし（内部実装の整理のみ。ROM集約はGowin GW5A-25A合成でBSRAM数・INIT内容が集約前と一致することを確認済み）
 - `gndless_fixedpoint` と `gndless_nco` の package をトップレベル import し、`FixedPointValue` / `Q4_23` / `Q1_23` / `Phase` / `Phasor` の完全修飾パスを短縮（Veryl 0.20.3 の namespace import 機能を使用）
 - `gndless_fixedpoint` の project-scope function (`multiply` / `resize`) を import し、`sine` の補間乗算を全幅積と明示的な丸め (`resize`) へ整理。乗算・丸めを stage 2 の FF へ移動（Veryl 0.21 の project-scope function import 機能を使用）
 - `SineRomQuarter` / `SineRomQuarterDual` に重複していたサイン波ROMテーブルを `SineRomData::TABLE` へ集約（Veryl 0.22 で simulator が package const 配列の初期化に対応したため）
