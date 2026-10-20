@@ -114,7 +114,7 @@ pub module SineWaveLerpCore (
         if idx == 10'd1023 {
             addr_b = 10'd1023;
         } else {
-            addr_b = idx + 1;
+            addr_b = idx + 1'b1;
         }
     }
 
