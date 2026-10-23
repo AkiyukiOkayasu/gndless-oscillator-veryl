@@ -1,0 +1,62 @@
+/// SuperSaw exampleの動作検証
+/// 7ボイスのSawが出力され、左右で異なるミックスになることを確認する。
+#[test(test_super_saw)]
+module test_super_saw {
+    inst clk: $tb::clock_gen;
+    inst rst: $tb::reset_gen ( clk );
+
+    const SYSTEM_CLK_HZ: u32 = 50_000_000;
+    const BASE_HZ      : f64 = 440.0;
+
+    var phase_step           : gndless_nco::Phase::step_t;
+    var detune_step_neg_long : gndless_nco::Phase::step_t;
+    var detune_step_neg_mid  : gndless_nco::Phase::step_t;
+    var detune_step_neg_short: gndless_nco::Phase::step_t;
+    var detune_step_pos_short: gndless_nco::Phase::step_t;
+    var detune_step_pos_mid  : gndless_nco::Phase::step_t;
+    var detune_step_pos_long : gndless_nco::Phase::step_t;
+
+    var sample_out_a: gndless_fixedpoint::Q8_24::Raw;
+    var sample_out_b: gndless_fixedpoint::Q8_24::Raw;
+    var diff_seen   : bbool                         ;
+
+    inst dut: SuperSaw (
+        clk                    ,
+        rst                    ,
+        phase_step             ,
+        detune_step_neg_long   ,
+        detune_step_neg_mid    ,
+        detune_step_neg_short  ,
+        detune_step_pos_short  ,
+        detune_step_pos_mid    ,
+        detune_step_pos_long   ,
+        sample_out_a           ,
+        sample_out_b           ,
+    );
+
+    initial {
+        phase_step            = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ);
+        detune_step_neg_long  = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ * 0.11);
+        detune_step_neg_mid   = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ * 0.063);
+        detune_step_neg_short = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ * 0.03);
+        detune_step_pos_short = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ * 0.03);
+        detune_step_pos_mid   = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ * 0.062);
+        detune_step_pos_long  = gndless_nco::Phase::step_from_hz(SYSTEM_CLK_HZ, BASE_HZ * 0.107);
+
+        rst.assert();
+        clk.next(10);
+
+        diff_seen = 0;
+        for _ in 0..32 {
+            clk.next(16);
+            if sample_out_a != sample_out_b {
+                diff_seen = 1;
+            }
+        }
+
+        $assert(sample_out_a != 0, "SuperSaw output A is silent");
+        $assert(sample_out_b != 0, "SuperSaw output B is silent");
+        $assert(diff_seen, "SuperSaw stereo outputs never differ");
+        $finish();
+    }
+}

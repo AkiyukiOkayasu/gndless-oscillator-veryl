@@ -8,6 +8,10 @@ inst osc: gndless_oscillator::SineOscillator ( clk, phase_rst, phase_step, audio
 
 依存は`fixedpoint`と`nco`です。phase/phase stepは`gndless_nco::Phase`、波形出力は`gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>` interfaceです。サイン波ROMはQ1.23 (24bit) の第一象限テーブル (1024ワード) で、lerpの補間は27bit×18bit (Q1.17係数) 乗算です。内部演算はQ4.23ドメインのシフト・bit slice・加算のみで、`convert()`は使いません。oscillator wrapperは`gndless_nco::Phasor`の同期resetと`phase_rst`を使います。振幅、duty、noise seed/stateの契約は各module doc commentを正とします。
 
+## Examples
+
+`examples/super_saw.veryl` は7ボイスの非対称デチューンとLFSRジッターを含むSuperSAWのexampleです。`examples/test_super_saw.veryl` のnative testを`veryl test`で実行します。`examples`はコード生成・doc・依存プロジェクトから除外されます。
+
 ## レイテンシー契約 (phase入力 → audio出力)
 
 各波形コアは自然なレイテンシーを持ち、遅延整列は行わない:

@@ -1,0 +1,412 @@
+/// SuperSAWオシレーター (7ボイス) のexample
+/// 7つのノコギリ波をデチューンして重ね合わせ、厚みのあるアンサンブル効果を生成する
+/// Roland JP-8080のSuperSAWの非対称デチューン比率を再現
+///
+/// このexampleではデチューン量を`gndless_nco::Phase::step_t`のオフセットとして受け取る。
+/// 利用側で`Phase::step_from_hz`などを使ってベースstepから計算する。
+///
+/// 各ボイスに独立したLFSRベースの周波数ジッターを追加し、微小な周波数揺らぎによりスペクトルエネルギーを均一化する。
+///
+/// ボイス0: 原音 (デチューンなし)
+/// ボイス1: -11.0%
+/// ボイス2: +10.7%
+/// ボイス3: -6.3%
+/// ボイス4: +6.2%
+/// ボイス5: -3.0%
+/// ボイス6: +3.0%
+
+pub module SuperSaw (
+    clk                  : input  clock                         ,
+    rst                  : input  reset                         ,
+    phase_step           : input  gndless_nco::Phase::step_t    ,
+    detune_step_neg_long : input  gndless_nco::Phase::step_t    ,
+    detune_step_neg_mid  : input  gndless_nco::Phase::step_t    ,
+    detune_step_neg_short: input  gndless_nco::Phase::step_t    ,
+    detune_step_pos_short: input  gndless_nco::Phase::step_t    ,
+    detune_step_pos_mid  : input  gndless_nco::Phase::step_t    ,
+    detune_step_pos_long : input  gndless_nco::Phase::step_t    ,
+    sample_out_a         : output gndless_fixedpoint::Q8_24::Raw, /// 左出力 (saw_v0+v1+v3+v5)
+    sample_out_b         : output gndless_fixedpoint::Q8_24::Raw, /// 右出力 (saw_v0+v2+v4+v6)
+) {
+    // =========================================
+    // 周波数ジッター生成: LFSR → LPF → 17bit抽出
+    // 50MHzを1000分周した50kHzでLFSRを更新、LPF(SHIFT=10)でfc≈7.7Hzのローパスをかけてから上位17bitを符号付きで抽出し、各ボイスの位相ステップに加算
+    // =========================================
+
+    // 1000分周カウンター (50MHz → 50kHz)
+    var div_cnt: logic<10>;
+    var lfsr_en: bbool    ;
+    always_ff (clk, rst) {
+        if_reset {
+            div_cnt = 0;
+        } else if (div_cnt == 999) {
+            div_cnt = 0;
+        } else {
+            div_cnt += 1'b1;
+        }
+    }
+    always_comb {
+        lfsr_en = (div_cnt == 999) as bbool;
+    }
+
+    // LFSR初期化パルス: リセット解除後最初のlfsr_enでシードをロード
+    var lfsr_init: logic;
+    always_ff (clk, rst) {
+        if_reset {
+            lfsr_init = 1;
+        } else if lfsr_en {
+            lfsr_init = 0;
+        }
+    }
+
+    // LFSRシード値 (各ボイスで異なる)
+    const LFSR_SEED_V0: u32 = 32'hDEAD_BEE1;
+    const LFSR_SEED_V1: u32 = 32'hCAFE_BAB2;
+    const LFSR_SEED_V2: u32 = 32'h1234_5679;
+    const LFSR_SEED_V3: u32 = 32'h9ABC_DEF1;
+    const LFSR_SEED_V4: u32 = 32'hF00D_CAF3;
+    const LFSR_SEED_V5: u32 = 32'h7654_3211;
+    const LFSR_SEED_V6: u32 = 32'hFEED_FAC4;
+
+    // 7ボイスのLFSR出力
+    var lfsr_out_v0: logic<32>;
+    var lfsr_out_v1: logic<32>;
+    var lfsr_out_v2: logic<32>;
+    var lfsr_out_v3: logic<32>;
+    var lfsr_out_v4: logic<32>;
+    var lfsr_out_v5: logic<32>;
+    var lfsr_out_v6: logic<32>;
+
+    inst inst_lfsr_v0: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V0,
+        o_val   : lfsr_out_v0 ,
+    );
+    inst inst_lfsr_v1: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V1,
+        o_val   : lfsr_out_v1 ,
+    );
+    inst inst_lfsr_v2: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V2,
+        o_val   : lfsr_out_v2 ,
+    );
+    inst inst_lfsr_v3: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V3,
+        o_val   : lfsr_out_v3 ,
+    );
+    inst inst_lfsr_v4: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V4,
+        o_val   : lfsr_out_v4 ,
+    );
+    inst inst_lfsr_v5: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V5,
+        o_val   : lfsr_out_v5 ,
+    );
+    inst inst_lfsr_v6: $std::lfsr_galois #(
+        SIZE: 32,
+    ) (
+        i_clk   : clk         ,
+        i_en    : lfsr_en     ,
+        i_set   : lfsr_init   ,
+        i_setval: LFSR_SEED_V6,
+        o_val   : lfsr_out_v6 ,
+    );
+
+    // LPFでスムージング (fc ≈ 50kHz / (2π × 1024) ≈ 7.7Hz)
+    var lpf_out_v0: signed logic<32>;
+    var lpf_out_v1: signed logic<32>;
+    var lpf_out_v2: signed logic<32>;
+    var lpf_out_v3: signed logic<32>;
+    var lpf_out_v4: signed logic<32>;
+    var lpf_out_v5: signed logic<32>;
+    var lpf_out_v6: signed logic<32>;
+
+    inst inst_lpf_v0: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v0),
+        y     : lpf_out_v0          ,
+    );
+    inst inst_lpf_v1: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v1),
+        y     : lpf_out_v1          ,
+    );
+    inst inst_lpf_v2: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v2),
+        y     : lpf_out_v2          ,
+    );
+    inst inst_lpf_v3: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v3),
+        y     : lpf_out_v3          ,
+    );
+    inst inst_lpf_v4: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v4),
+        y     : lpf_out_v4          ,
+    );
+    inst inst_lpf_v5: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v5),
+        y     : lpf_out_v5          ,
+    );
+    inst inst_lpf_v6: LpfShift #(
+        DATA_WIDTH: 32,
+        SHIFT     : 10,
+    ) (
+        clk   : clk                 ,
+        rst   : rst                 ,
+        enable: lfsr_en             ,
+        x     : $signed(lfsr_out_v6),
+        y     : lpf_out_v6          ,
+    );
+
+    // LPF出力の上位17bitを符号付きで抽出 → 48bit符号拡張
+    let jitter_step_v0: gndless_nco::Phase::step_t = (lpf_out_v0 >>> 15) as gndless_nco::Phase::step_t;
+    let jitter_step_v1: gndless_nco::Phase::step_t = (lpf_out_v1 >>> 15) as gndless_nco::Phase::step_t;
+    let jitter_step_v2: gndless_nco::Phase::step_t = (lpf_out_v2 >>> 15) as gndless_nco::Phase::step_t;
+    let jitter_step_v3: gndless_nco::Phase::step_t = (lpf_out_v3 >>> 15) as gndless_nco::Phase::step_t;
+    let jitter_step_v4: gndless_nco::Phase::step_t = (lpf_out_v4 >>> 15) as gndless_nco::Phase::step_t;
+    let jitter_step_v5: gndless_nco::Phase::step_t = (lpf_out_v5 >>> 15) as gndless_nco::Phase::step_t;
+    let jitter_step_v6: gndless_nco::Phase::step_t = (lpf_out_v6 >>> 15) as gndless_nco::Phase::step_t;
+
+    // =========================================
+    // 7ボイスの位相ステップ (デチューン + ジッター)
+    // =========================================
+    let step_v0: gndless_nco::Phase::step_t = phase_step + jitter_step_v0;
+    let step_v1: gndless_nco::Phase::step_t = phase_step - detune_step_neg_long + jitter_step_v1;
+    let step_v2: gndless_nco::Phase::step_t = phase_step + detune_step_pos_long + jitter_step_v2;
+    let step_v3: gndless_nco::Phase::step_t = phase_step - detune_step_neg_mid + jitter_step_v3;
+    let step_v4: gndless_nco::Phase::step_t = phase_step + detune_step_pos_mid + jitter_step_v4;
+    let step_v5: gndless_nco::Phase::step_t = phase_step - detune_step_neg_short + jitter_step_v5;
+    let step_v6: gndless_nco::Phase::step_t = phase_step + detune_step_pos_short + jitter_step_v6;
+
+    // =========================================
+    // 7つのPhasor + SawWaveCore
+    // =========================================
+    var phase_v0: gndless_nco::Phase::phase_t;
+    var phase_v1: gndless_nco::Phase::phase_t;
+    var phase_v2: gndless_nco::Phase::phase_t;
+    var phase_v3: gndless_nco::Phase::phase_t;
+    var phase_v4: gndless_nco::Phase::phase_t;
+    var phase_v5: gndless_nco::Phase::phase_t;
+    var phase_v6: gndless_nco::Phase::phase_t;
+
+    inst phasor_v0: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v0 ,
+        phase     : phase_v0,
+    );
+    inst phasor_v1: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v1 ,
+        phase     : phase_v1,
+    );
+    inst phasor_v2: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v2 ,
+        phase     : phase_v2,
+    );
+    inst phasor_v3: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v3 ,
+        phase     : phase_v3,
+    );
+    inst phasor_v4: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v4 ,
+        phase     : phase_v4,
+    );
+    inst phasor_v5: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v5 ,
+        phase     : phase_v5,
+    );
+    inst phasor_v6: gndless_nco::Phasor (
+        clk                 ,
+        phase_rst : 1'b0    ,
+        phase_step: step_v6 ,
+        phase     : phase_v6,
+    );
+
+    // gndless_oscillator 0.3.0 以降は出力が Q4.23 形式のため、アプリ内 Q8.24 へ変換する
+    inst saw_audio_v0: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_audio_v1: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_audio_v2: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_audio_v3: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_audio_v4: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_audio_v5: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+    inst saw_audio_v6: gndless_fixedpoint::FixedPointValue::<gndless_fixedpoint::Q4_23>;
+
+    var saw_v0: gndless_fixedpoint::Q8_24::Raw;
+    var saw_v1: gndless_fixedpoint::Q8_24::Raw;
+    var saw_v2: gndless_fixedpoint::Q8_24::Raw;
+    var saw_v3: gndless_fixedpoint::Q8_24::Raw;
+    var saw_v4: gndless_fixedpoint::Q8_24::Raw;
+    var saw_v5: gndless_fixedpoint::Q8_24::Raw;
+    var saw_v6: gndless_fixedpoint::Q8_24::Raw;
+
+    inst saw_core_v0: gndless_oscillator::SawWaveCore (
+        phase: phase_v0    ,
+        audio: saw_audio_v0,
+    );
+    inst saw_core_v1: gndless_oscillator::SawWaveCore (
+        phase: phase_v1    ,
+        audio: saw_audio_v1,
+    );
+    inst saw_core_v2: gndless_oscillator::SawWaveCore (
+        phase: phase_v2    ,
+        audio: saw_audio_v2,
+    );
+    inst saw_core_v3: gndless_oscillator::SawWaveCore (
+        phase: phase_v3    ,
+        audio: saw_audio_v3,
+    );
+    inst saw_core_v4: gndless_oscillator::SawWaveCore (
+        phase: phase_v4    ,
+        audio: saw_audio_v4,
+    );
+    inst saw_core_v5: gndless_oscillator::SawWaveCore (
+        phase: phase_v5    ,
+        audio: saw_audio_v5,
+    );
+    inst saw_core_v6: gndless_oscillator::SawWaveCore (
+        phase: phase_v6    ,
+        audio: saw_audio_v6,
+    );
+
+    assign saw_v0 = $signed({saw_audio_v0.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v1 = $signed({saw_audio_v1.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v2 = $signed({saw_audio_v2.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v3 = $signed({saw_audio_v3.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v4 = $signed({saw_audio_v4.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v5 = $signed({saw_audio_v5.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v6 = $signed({saw_audio_v6.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+
+    // =========================================
+    // ミキシング: ステレオ出力 (JP-8080非対称デチューン)
+    // Out0 (neg側+中心): v0×1.0 + v1×0.25 + v3×0.25 + v5×0.25
+    // Out1 (pos側+中心): v0×1.0 + v2×0.25 + v4×0.25 + v6×0.25
+    // =========================================
+    var sum_a: signed logic<35>;
+    var sum_b: signed logic<35>;
+    always_comb {
+        sum_a = (saw_v0 as 35) + ((saw_v1 >>> 2) as 35) + ((saw_v3 >>> 2) as 35) + ((saw_v5 >>> 2) as 35);
+        sum_b = (saw_v0 as 35) + ((saw_v2 >>> 2) as 35) + ((saw_v4 >>> 2) as 35) + ((saw_v6 >>> 2) as 35);
+    }
+
+    var sample_out_a_r: gndless_fixedpoint::Q8_24::Raw;
+    var sample_out_b_r: gndless_fixedpoint::Q8_24::Raw;
+    always_ff (clk, rst) {
+        if_reset {
+            sample_out_a_r = gndless_fixedpoint::Q8_24::ZERO;
+            sample_out_b_r = gndless_fixedpoint::Q8_24::ZERO;
+        } else {
+            sample_out_a_r = sum_a as gndless_fixedpoint::Q8_24::Raw;
+            sample_out_b_r = sum_b as gndless_fixedpoint::Q8_24::Raw;
+        }
+    }
+
+    assign sample_out_a = sample_out_a_r;
+    assign sample_out_b = sample_out_b_r;
+}
+
+/// シフト方式の一次IIRローパスフィルタ (example内の簡易実装)
+/// y[n] = y[n-1] + (x[n] - y[n-1]) >> SHIFT
+module LpfShift #(
+    param DATA_WIDTH: u32 = 32,
+    param SHIFT     : u32 = 10,
+) (
+    clk   : input  clock                   ,
+    rst   : input  reset                   ,
+    enable: input  bbool                   ,
+    x     : input  signed logic<DATA_WIDTH>,
+    y     : output signed logic<DATA_WIDTH>,
+) {
+    const ACC_WIDTH: u32 = DATA_WIDTH + SHIFT;
+
+    var acc  : signed logic<ACC_WIDTH>;
+    var x_ext: signed logic<ACC_WIDTH>;
+
+    always_comb {
+        x_ext = x <<< SHIFT;
+    }
+
+    always_ff {
+        if_reset {
+            acc = 0;
+        } else if enable {
+            let diff : signed logic<ACC_WIDTH> = x_ext - acc;
+            let delta: signed logic<ACC_WIDTH> = diff >>> SHIFT;
+            acc   = acc + delta;
+        }
+    }
+
+    assign y = acc >>> SHIFT;
+}

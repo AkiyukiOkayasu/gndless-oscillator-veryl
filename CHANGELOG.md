@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `examples/super_saw.veryl` とnative testを追加。7ボイスの非対称デチューンとLFSRジッターを含むSuperSAWのexample。ジッター用LPFはexample内の簡易実装
+
 ## [0.4.1] - 2026-10-09
 
 ### Changed
