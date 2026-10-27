@@ -2,9 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `SineWaveLerpCore`のidx/fracをROM出力と同じ1段で遅延し、位相ジャンプ時に補間係数とROM addressがずれる問題を修正した
+- `SuperSaw` exampleのQ4.23からQ8.24への変換を`$std::sign_extend`へ置き換え、native testでの符号拡張を修正した
+- `SuperSaw` example内のLPF差分を1bit広く計算し、フルスケール符号反転時のwrapを修正した
+
 ### Added
 
+- `SineWaveLerpCore`の位相ジャンプ時のpipeline整合testを追加した
 - `examples/super_saw.veryl` とnative testを追加。7ボイスの非対称デチューンとLFSRジッターを含むSuperSAWのexample。ジッター用LPFはexample内の簡易実装
+
+### Changed
+
+- `PinkNoise`の行更新周期を実装に合わせて`2^(k+1)`サンプルごとと明記した
+- `WhiteNoise`/`PinkNoise`のリセットなし動作とpower-up前提をdoc commentへ明記した
 
 ## [0.4.1] - 2026-10-09
 

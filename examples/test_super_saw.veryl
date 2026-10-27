@@ -16,9 +16,13 @@ module test_super_saw {
     var detune_step_pos_mid  : gndless_nco::Phase::step_t;
     var detune_step_pos_long : gndless_nco::Phase::step_t;
 
-    var sample_out_a: gndless_fixedpoint::Q8_24::Raw;
-    var sample_out_b: gndless_fixedpoint::Q8_24::Raw;
-    var diff_seen   : bbool                         ;
+    var sample_out_a: gndless_fixedpoint::Q8_24::Raw    ;
+    var sample_out_b: gndless_fixedpoint::Q8_24::Raw    ;
+    var max_a       : signed logic                  <32>;
+    var min_a       : signed logic                  <32>;
+    var max_b       : signed logic                  <32>;
+    var min_b       : signed logic                  <32>;
+    var diff_seen   : bbool                             ;
 
     inst dut: SuperSaw (
         clk                    ,
@@ -47,16 +51,34 @@ module test_super_saw {
         clk.next(10);
 
         diff_seen = 0;
+        max_a     = sample_out_a;
+        min_a     = sample_out_a;
+        max_b     = sample_out_b;
+        min_b     = sample_out_b;
         for _ in 0..32 {
             clk.next(16);
             if sample_out_a != sample_out_b {
                 diff_seen = 1;
+            }
+            if sample_out_a >: max_a {
+                max_a = sample_out_a;
+            }
+            if sample_out_a <: min_a {
+                min_a = sample_out_a;
+            }
+            if sample_out_b >: max_b {
+                max_b = sample_out_b;
+            }
+            if sample_out_b <: min_b {
+                min_b = sample_out_b;
             }
         }
 
         $assert(sample_out_a != 0, "SuperSaw output A is silent");
         $assert(sample_out_b != 0, "SuperSaw output B is silent");
         $assert(diff_seen, "SuperSaw stereo outputs never differ");
+        $assert(max_a <: 32'sd50_000_000 && min_a >: -32'sd50_000_000, "SuperSaw output A out of range");
+        $assert(max_b <: 32'sd50_000_000 && min_b >: -32'sd50_000_000, "SuperSaw output B out of range");
         $finish();
     }
 }

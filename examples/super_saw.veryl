@@ -28,6 +28,16 @@ pub module SuperSaw (
     sample_out_a         : output gndless_fixedpoint::Q8_24::Raw, /// 左出力 (saw_v0+v1+v3+v5)
     sample_out_b         : output gndless_fixedpoint::Q8_24::Raw, /// 右出力 (saw_v0+v2+v4+v6)
 ) {
+    type q4_23_shifted_t = signed logic<28>;
+
+    /// Q4.23のraw値へ小数部1bitを追加し、Q8.24の32bitへ符号拡張する。
+    function to_q8_24 (
+        value: input gndless_fixedpoint::Q4_23::Raw,
+    ) -> gndless_fixedpoint::Q8_24::Raw {
+        let shifted: q4_23_shifted_t = $signed({value, 1'b0});
+        return $std::sign_extend::<q4_23_shifted_t, gndless_fixedpoint::Q8_24::Raw>(shifted);
+    }
+
     // =========================================
     // 周波数ジッター生成: LFSR → LPF → 17bit抽出
     // 50MHzを1000分周した50kHzでLFSRを更新、LPF(SHIFT=10)でfc≈7.7Hzのローパスをかけてから上位17bitを符号付きで抽出し、各ボイスの位相ステップに加算
@@ -341,13 +351,13 @@ pub module SuperSaw (
         audio: saw_audio_v6,
     );
 
-    assign saw_v0 = $signed({saw_audio_v0.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
-    assign saw_v1 = $signed({saw_audio_v1.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
-    assign saw_v2 = $signed({saw_audio_v2.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
-    assign saw_v3 = $signed({saw_audio_v3.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
-    assign saw_v4 = $signed({saw_audio_v4.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
-    assign saw_v5 = $signed({saw_audio_v5.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
-    assign saw_v6 = $signed({saw_audio_v6.raw, 1'b0}) as gndless_fixedpoint::Q8_24::Raw;
+    assign saw_v0 = to_q8_24(saw_audio_v0.raw);
+    assign saw_v1 = to_q8_24(saw_audio_v1.raw);
+    assign saw_v2 = to_q8_24(saw_audio_v2.raw);
+    assign saw_v3 = to_q8_24(saw_audio_v3.raw);
+    assign saw_v4 = to_q8_24(saw_audio_v4.raw);
+    assign saw_v5 = to_q8_24(saw_audio_v5.raw);
+    assign saw_v6 = to_q8_24(saw_audio_v6.raw);
 
     // =========================================
     // ミキシング: ステレオ出力 (JP-8080非対称デチューン)
@@ -402,9 +412,12 @@ module LpfShift #(
         if_reset {
             acc = 0;
         } else if enable {
-            let diff : signed logic<ACC_WIDTH> = x_ext - acc;
-            let delta: signed logic<ACC_WIDTH> = diff >>> SHIFT;
-            acc   = acc + delta;
+            let x_ext_s : signed logic<ACC_WIDTH + 1> = $signed({x_ext[msb], x_ext});
+            let acc_s   : signed logic<ACC_WIDTH + 1> = $signed({acc[msb], acc});
+            let diff    : signed logic<ACC_WIDTH + 1> = x_ext_s - acc_s;
+            let delta   : signed logic<ACC_WIDTH + 1> = diff >>> SHIFT;
+            let next_acc: signed logic<ACC_WIDTH + 1> = acc_s + delta;
+            acc      = next_acc[ACC_WIDTH - 1:0];
         }
     }
 

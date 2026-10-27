@@ -4,7 +4,8 @@ import gndless_fixedpoint::Q4_23;
 /// ホワイトノイズジェネレーター (Xorshift32 Algorithm)
 ///
 /// オーディオ用の高品質な疑似乱数ノイズを生成する。
-/// リセット信号は不要で、起動後に非ゼロのシードで初期化される。
+/// リセット端子を持たず、FPGAのpower-up 0を前提に、更新時にrng_stateが0ならINITIAL_SEEDをロードする。
+/// ASICや4-state simulationで初期値が0以外またはXになる場合は利用側で初期化が必要である。
 ///
 /// 出力スケーリング:
 ///   rng_state をQ1.31として解釈した値の8bit算術右シフトを直接Q4.23へ変換
@@ -12,7 +13,7 @@ import gndless_fixedpoint::Q4_23;
 ///
 /// レイテンシー: 0クロック (rng_stateの更新と同時に出力が更新される)
 pub module WhiteNoise #(
-    param DIV: u16 = 200, /// クロック分周比
+    param DIV: u16 = 200, /// クロック分周比 (1以上)
 ) (
     clk  : input   clock                                , /// クロック
     audio: modport FixedPointValue::<Q4_23>::output_port, /// 出力波形 (Q4.23形式)

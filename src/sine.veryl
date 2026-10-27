@@ -130,13 +130,27 @@ pub module SineWaveLerpCore (
     );
 
     // ----------------------------------------------------
-    // stage 1: 差分・係数 (ROM読み出し結果から1クロック後)
+    // stage 1: ROMアドレスと同時にidx/frac/quadrantを1段遅延
+    // ----------------------------------------------------
+    // ROM出力はアドレス入力の1クロック後に現れるため、対応するidx/fracも同じ段で保持する。
+    var idx_d     : logic<10>;
+    var frac_d    : logic<20>;
+    var quadrant_d: logic<2> ;
+
+    always_ff (clk) {
+        idx_d      = idx;
+        frac_d     = frac;
+        quadrant_d = quadrant;
+    }
+
+    // ----------------------------------------------------
+    // stage 2: 差分・係数 (ROM出力と遅延idx/fracを同じedgeで取得)
     // ----------------------------------------------------
     // 最後のスライス (idx==1023) は 90° ちょうどの値 Q1_23::MAX との補間にする
     // (テーブル末尾は sin(1023h) = cos(h) のため、このまま補間するとピークが10LSB平らになる。)
     var val_b_eff: Q1_23::Raw;
     always_comb {
-        if idx == 10'd1023 {
+        if idx_d == 10'd1023 {
             val_b_eff = Q1_23::MAX;
         } else {
             val_b_eff = val_b;
@@ -146,44 +160,46 @@ pub module SineWaveLerpCore (
     // Formula: Out = A + (B - A) * frac
     // diff: Q4.23 (27bit) で計算 (隣接テーブル間の差は27bit signedに収まる)
     // coeff: Q1.17 (18bit signed、小数17bit) = frac上位17bit
-    var val_a_27  : Q4_23::Raw      ;
-    var diff      : signed logic<27>;
-    var coeff     : signed logic<18>;
-    var quadrant_d: logic       <2> ;
+    var val_a_27   : Q4_23::Raw      ;
+    var diff       : signed logic<27>;
+    var coeff      : signed logic<18>;
+    var quadrant_d2: logic       <2> ;
 
     always_ff (clk) {
-        val_a_27   = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
-        diff       = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
+        val_a_27    = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
+        diff        = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
             - $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
-        coeff      = $signed({1'b0, frac[19:3]});
-        quadrant_d = quadrant;
+        coeff       = $signed({1'b0, frac_d[19:3]});
+        quadrant_d2 = quadrant_d;
     }
 
     // ----------------------------------------------------
-    // stage 2: 乗算・丸め (27bit signed × 18bit signed をQ4.23へ丸めて登録)
+    // stage 3: 乗算・丸めとval_aの1段遅延
     // ----------------------------------------------------
     // 積の小数ビット数は 23 + 17 = 40 なので、切り捨てで Q4.23 に戻す
     var interp_part: signed logic<28>;
-    var quadrant_d2: logic       <2> ;
+    var val_a_27_d : Q4_23::Raw      ;
+    var quadrant_d3: logic       <2> ;
 
     always_ff (clk) {
         let product    : signed logic<45> = multiply::<27, 18>(diff, coeff);
         interp_part = resize::<45, 40, 28, 23, Types::RoundingMode::TOWARD_NEGATIVE, Types::OverflowMode::WRAP>(
             product,
         );
-        quadrant_d2 = quadrant_d;
+        val_a_27_d  = val_a_27;
+        quadrant_d3 = quadrant_d2;
     }
 
     // ----------------------------------------------------
-    // stage 3: 加算・符号 (組み合わせ)
+    // stage 4: 加算・符号 (組み合わせ)
     // ----------------------------------------------------
     // interp は val_a と val_b の間に収まり27bitに飽和しないため sat 不要
     var interp: signed logic<27>;
     always_comb {
-        interp = (val_a_27 as 28 + interp_part) as 27;
+        interp = (val_a_27_d as 28 + interp_part) as 27;
 
         // 第3・第4象限はマイナス側
-        if quadrant_d2[1] {
+        if quadrant_d3[1] {
             audio.raw = -interp;
         } else {
             audio.raw = interp;
@@ -302,6 +318,34 @@ module test_sine_wave_lerp_core {
         clk.next(3);
         $assert(audio.raw == -27'sd5931640, "lerp quadrant sign mismatch");
 
+        $finish();
+    }
+}
+
+/// 位相ジャンプ時にROM出力とidx/fracが同じサンプルを指すことを検証
+/// 45度 (idx=512, frac=0) から idx=768, frac=2^19 へ変え、3クロック後の補間値が新しい窓の値になることを確認する。
+/// 期待値は table[768]=7750062 と table[769]=7754977 の中点を切り捨てた 7752519。
+#[test(test_sine_wave_lerp_core_pipeline)]
+module test_sine_wave_lerp_core_pipeline {
+    inst clk: $tb::clock_gen;
+
+    var phase: Phase::phase_t;
+    inst audio: FixedPointValue::<Q4_23>;
+
+    inst dut: SineWaveLerpCore ( clk, phase, audio );
+
+    initial {
+        phase = 32'h2000_0000;
+        clk.next(4);
+        $assert(audio.raw == 27'sd5931640, "pipeline setup value mismatch");
+
+        phase = 32'h3008_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd7752519, "pipeline must use idx/frac of the same ROM address");
+
+        phase = 32'h2000_0000;
+        clk.next(3);
+        $assert(audio.raw == 27'sd5931640, "pipeline must recover after a phase jump");
         $finish();
     }
 }
