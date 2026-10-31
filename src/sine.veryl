@@ -67,7 +67,7 @@ pub module SineWaveCore (
 /// サイン波生成コアモジュール (LUT + 線形補間)
 /// 位相入力から波形を生成する純粋な変換モジュール
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
-/// 補間は12bit × 12bitの乗算を使う
+/// 補間は11bit × 10bitの乗算（MULT12X12）を使う
 /// レイテンシー: 3クロック (ROM読み出し | diff+係数 | 乗算。加算・符号は乗算後の組み合わせ)
 pub module SineWaveLerpCore (
     clk  : input   clock                                , /// クロック
@@ -155,34 +155,34 @@ pub module SineWaveLerpCore (
     }
 
     // Formula: Out = A + (B - A) * frac
-    // diff12: diff>>2 (12bit unsigned)。隣接テーブル間の差は最大約12,868なので12bitに収まる
-    // coeff12: frac上位12bit (12bit unsigned)。frac全体を2^20としたときの上位12bit
+    // diff11: diff>>3 (11bit)。隣接テーブル間の差は最大約12,868なので11bitに収まる
+    // coeff10: frac上位10bit (10bit)。MULT12X12に収まる11×10にする
     var val_a_27   : Q4_23::Raw    ;
-    var diff12     : logic     <12>;
-    var coeff12    : logic     <12>;
+    var diff11     : logic     <11>;
+    var coeff10    : logic     <10>;
     var quadrant_d2: logic     <2> ;
 
     always_ff (clk) {
         let diff_full  : signed logic<27> = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
             - $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
         val_a_27    = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
-        diff12      = diff_full[13:2];
-        coeff12     = frac_d[19:8];
+        diff11      = diff_full[13:3];
+        coeff10     = frac_d[19:10];
         quadrant_d2 = quadrant_d;
     }
 
     // ----------------------------------------------------
     // stage 3: 乗算・丸めとval_aの1段遅延
     // ----------------------------------------------------
-    // diff12 = diff>>2、coeff12 = frac>>8 なので、
-    // product>>10 が diff * frac / 2^20 になる
+    // diff11 = diff>>3、coeff10 = frac>>10 なので、
+    // product>>7 が diff * frac / 2^20 になる
     var interp_part: signed logic<28>;
     var val_a_27_d : Q4_23::Raw      ;
     var quadrant_d3: logic       <2> ;
 
     always_ff (clk) {
-        let product    : logic<24> = diff12 * coeff12;
-        let term       : logic<14> = product[23:10];
+        let product    : logic<21> = diff11 * coeff10;
+        let term       : logic<14> = product[20:7];
         interp_part = {14'b0, term};
         val_a_27_d  = val_a_27;
         quadrant_d3 = quadrant_d2;
@@ -280,7 +280,7 @@ module test_sine_wave_core {
 /// 期待値はテーブル値と補間式から導出:
 ///   45度 (frac=0)      : table[512] = 5931640
 ///   frac < 2^3         : coeff=0 なので table[512] のまま
-///   中点 (frac=2^19)    : table[512] + (table[513]-table[512])/2 = 5931640 + 4546 = 5936186
+///   中点 (frac=2^19)    : table[512] + (table[513]-table[512])/2 = 5931640 + 4544 = 5936184
 ///   90度 (idx=1023)    : table[1023] + ((Q1_23::MAX - table[1023])>>2 × 4095 >> 10) = 8388597 + 7 = 8388604
 #[test(test_sine_wave_lerp_core)]
 module test_sine_wave_lerp_core {
@@ -306,7 +306,7 @@ module test_sine_wave_lerp_core {
 
         phase = 32'h2008_0000;
         clk.next(3);
-        $assert(audio.raw == 27'sd5936186, "lerp midpoint mismatch");
+        $assert(audio.raw == 27'sd5936184, "lerp midpoint mismatch");
 
         phase = 32'h4000_0000;
         clk.next(3);
