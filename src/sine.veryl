@@ -156,10 +156,10 @@ pub module SineWaveLerpCore (
 
     // Formula: Out = A + (B - A) * frac
     // diff11: diff>>3 (11bit)。隣接テーブル間の差は最大約12,868なので11bitに収まる
-    // coeff10: frac上位10bit (10bit)。MULT12X12に収まる11×10にする
+    // coeff11: frac上位11bit (11bit)。MULT12X12に収まる11×11にする
     var val_a_27   : Q4_23::Raw    ;
     var diff11     : logic     <11>;
-    var coeff10    : logic     <10>;
+    var coeff11    : logic     <11>;
     var quadrant_d2: logic     <2> ;
 
     always_ff (clk) {
@@ -167,22 +167,22 @@ pub module SineWaveLerpCore (
             - $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
         val_a_27    = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
         diff11      = diff_full[13:3];
-        coeff10     = frac_d[19:10];
+        coeff11     = frac_d[19:9];
         quadrant_d2 = quadrant_d;
     }
 
     // ----------------------------------------------------
     // stage 3: 乗算・丸めとval_aの1段遅延
     // ----------------------------------------------------
-    // diff11 = diff>>3、coeff10 = frac>>10 なので、
-    // product>>7 が diff * frac / 2^20 になる
+    // diff11 = diff>>3、coeff11 = frac>>9 なので、
+    // product>>8 が diff * frac / 2^20 になる
     var interp_part: signed logic<28>;
     var val_a_27_d : Q4_23::Raw      ;
     var quadrant_d3: logic       <2> ;
 
     always_ff (clk) {
-        let product    : logic<21> = diff11 * coeff10;
-        let term       : logic<14> = product[20:7];
+        let product    : logic<22> = diff11 * coeff11;
+        let term       : logic<14> = product[21:8];
         interp_part = {14'b0, term};
         val_a_27_d  = val_a_27;
         quadrant_d3 = quadrant_d2;
