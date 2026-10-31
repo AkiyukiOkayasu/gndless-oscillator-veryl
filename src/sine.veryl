@@ -1,9 +1,6 @@
-import gndless_fixedpoint::Types;
 import gndless_fixedpoint::FixedPointValue;
 import gndless_fixedpoint::Q4_23;
 import gndless_fixedpoint::Q1_23;
-import gndless_fixedpoint::multiply;
-import gndless_fixedpoint::resize;
 import gndless_nco::Phase;
 import gndless_nco::Phasor;
 
@@ -70,7 +67,7 @@ pub module SineWaveCore (
 /// サイン波生成コアモジュール (LUT + 線形補間)
 /// 位相入力から波形を生成する純粋な変換モジュール
 /// 実質12bit相当のテーブル引きに線形補間を追加することで、高精細なサイン波を生成
-/// 補間は27bit × 18bit (Q1.17係数) の乗算を使う
+/// 補間は12bit × 12bitの乗算を使う
 /// レイテンシー: 3クロック (ROM読み出し | diff+係数 | 乗算。加算・符号は乗算後の組み合わせ)
 pub module SineWaveLerpCore (
     clk  : input   clock                                , /// クロック
@@ -158,34 +155,35 @@ pub module SineWaveLerpCore (
     }
 
     // Formula: Out = A + (B - A) * frac
-    // diff: Q4.23 (27bit) で計算 (隣接テーブル間の差は27bit signedに収まる)
-    // coeff: Q1.17 (18bit signed、小数17bit) = frac上位17bit
-    var val_a_27   : Q4_23::Raw      ;
-    var diff       : signed logic<27>;
-    var coeff      : signed logic<18>;
-    var quadrant_d2: logic       <2> ;
+    // diff12: diff>>2 (12bit unsigned)。隣接テーブル間の差は最大約12,868なので12bitに収まる
+    // coeff12: frac上位12bit (12bit unsigned)。frac全体を2^20としたときの上位12bit
+    var val_a_27   : Q4_23::Raw    ;
+    var diff12     : logic     <12>;
+    var coeff12    : logic     <12>;
+    var quadrant_d2: logic     <2> ;
 
     always_ff (clk) {
-        val_a_27    = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
-        diff        = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
+        let diff_full  : signed logic<27> = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
             - $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
-        coeff       = $signed({1'b0, frac_d[19:3]});
+        val_a_27    = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
+        diff12      = diff_full[13:2];
+        coeff12     = frac_d[19:8];
         quadrant_d2 = quadrant_d;
     }
 
     // ----------------------------------------------------
     // stage 3: 乗算・丸めとval_aの1段遅延
     // ----------------------------------------------------
-    // 積の小数ビット数は 23 + 17 = 40 なので、切り捨てで Q4.23 に戻す
+    // diff12 = diff>>2、coeff12 = frac>>8 なので、
+    // product>>10 が diff * frac / 2^20 になる
     var interp_part: signed logic<28>;
     var val_a_27_d : Q4_23::Raw      ;
     var quadrant_d3: logic       <2> ;
 
     always_ff (clk) {
-        let product    : signed logic<45> = multiply::<27, 18>(diff, coeff);
-        interp_part = resize::<45, 40, 28, 23, Types::RoundingMode::TOWARD_NEGATIVE, Types::OverflowMode::WRAP>(
-            product,
-        );
+        let product    : logic<24> = diff12 * coeff12;
+        let term       : logic<14> = product[23:10];
+        interp_part = {14'b0, term};
         val_a_27_d  = val_a_27;
         quadrant_d3 = quadrant_d2;
     }
@@ -283,7 +281,7 @@ module test_sine_wave_core {
 ///   45度 (frac=0)      : table[512] = 5931640
 ///   frac < 2^3         : coeff=0 なので table[512] のまま
 ///   中点 (frac=2^19)    : table[512] + (table[513]-table[512])/2 = 5931640 + 4546 = 5936186
-///   90度 (idx=1023)    : table[1023] + (Q1_23::MAX - table[1023])*coeff>>>17 = 8388597 + 9 = 8388606
+///   90度 (idx=1023)    : table[1023] + ((Q1_23::MAX - table[1023])>>2 × 4095 >> 10) = 8388597 + 7 = 8388604
 #[test(test_sine_wave_lerp_core)]
 module test_sine_wave_lerp_core {
     inst clk: $tb::clock_gen;
@@ -312,7 +310,7 @@ module test_sine_wave_lerp_core {
 
         phase = 32'h4000_0000;
         clk.next(3);
-        $assert(audio.raw == 27'sd8388606, "lerp 90deg peak mismatch");
+        $assert(audio.raw == 27'sd8388604, "lerp 90deg peak mismatch");
 
         phase = 32'hA000_0000;
         clk.next(3);
@@ -324,7 +322,7 @@ module test_sine_wave_lerp_core {
 
 /// 位相ジャンプ時にROM出力とidx/fracが同じサンプルを指すことを検証
 /// 45度 (idx=512, frac=0) から idx=768, frac=2^19 へ変え、3クロック後の補間値が新しい窓の値になることを確認する。
-/// 期待値は table[768]=7750062 と table[769]=7754977 の中点を切り捨てた 7752519。
+/// 期待値は table[768]=7750062 と table[769]=7754977 の中点を切り捨てた 7752518。
 #[test(test_sine_wave_lerp_core_pipeline)]
 module test_sine_wave_lerp_core_pipeline {
     inst clk: $tb::clock_gen;
@@ -341,7 +339,7 @@ module test_sine_wave_lerp_core_pipeline {
 
         phase = 32'h3008_0000;
         clk.next(3);
-        $assert(audio.raw == 27'sd7752519, "pipeline must use idx/frac of the same ROM address");
+        $assert(audio.raw == 27'sd7752518, "pipeline must use idx/frac of the same ROM address");
 
         phase = 32'h2000_0000;
         clk.next(3);

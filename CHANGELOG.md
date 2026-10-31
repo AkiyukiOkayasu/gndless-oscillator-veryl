@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0] - 2026-10-31
+
+### Changed
+
+- `SineWaveLerpCore`の補間乗算を27bit×18bitから12bit×12bitへ変更した。`diff>>2`と`frac[19:8]`を使い、Gowin GW5AではMULT12X12（0.5 DSPブロック）に収まる
+- 12bit係数化によりQ4.23出力の最大誤差は約6 LSB（約0.001cent）。公開ポート、レイテンシー、波形interfaceは変更なし
+- 12bit補間の期待値に合わせてnative testを更新した
+
 ## [0.4.3] - 2026-10-27
 
 ### Fixed
