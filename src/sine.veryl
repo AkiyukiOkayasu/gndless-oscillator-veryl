@@ -155,42 +155,34 @@ pub module SineWaveLerpCore (
     }
 
     // Formula: Out = A + (B - A) * frac
-    // diff12: diff>>2 (12bit unsigned)。最大約12,868なので12bitに収まる
-    // coeff12: frac上位12bit (12bit unsigned)
-    // MULT12X12はsigned 12×12なので、両方から2048を引いて積を計算し、後で補正する
+    // diff11: diff>>3 (11bit)。隣接テーブル間の差は最大約12,868なので11bitに収まる
+    // coeff11: frac上位11bit (11bit)。MULT12X12に収まる11×11にする
     var val_a_27   : Q4_23::Raw    ;
-    var diff12     : logic     <12>;
-    var coeff12    : logic     <12>;
+    var diff11     : logic     <11>;
+    var coeff11    : logic     <11>;
     var quadrant_d2: logic     <2> ;
 
     always_ff (clk) {
         let diff_full  : signed logic<27> = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_b_eff)
             - $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
         val_a_27    = $std::sign_extend::<Q1_23::Raw, Q4_23::Raw>(val_a);
-        diff12      = diff_full[13:2];
-        coeff12     = frac_d[19:8];
+        diff11      = diff_full[13:3];
+        coeff11     = frac_d[19:9];
         quadrant_d2 = quadrant_d;
     }
 
     // ----------------------------------------------------
     // stage 3: 乗算・丸めとval_aの1段遅延
     // ----------------------------------------------------
-    // diff12 = diff>>2、coeff12 = frac>>8 なので、
-    // product>>10 が diff * frac / 2^20 になる
-    // signed 12×12の積に 2048*(a+b) - 2048^2 を足してunsigned積へ戻す
+    // diff11 = diff>>3、coeff11 = frac>>9 なので、
+    // product>>8 が diff * frac / 2^20 になる
     var interp_part: signed logic<28>;
     var val_a_27_d : Q4_23::Raw      ;
     var quadrant_d3: logic       <2> ;
 
     always_ff (clk) {
-        let a_signed   : signed logic<12> = $signed(diff12) - 12'sd2048;
-        let b_signed   : signed logic<12> = $signed(coeff12) - 12'sd2048;
-        let product_s  : signed logic<24> = a_signed * b_signed;
-        let sum_ab     : logic       <13> = diff12 + coeff12;
-        let sum_shift  : logic       <24> = sum_ab << 11;
-        let correction : signed logic<25> = $signed({1'b0, sum_shift}) - 25'sd4_194_304;
-        let product_u  : signed logic<25> = $signed(product_s) + correction;
-        let term       : logic       <14> = product_u[23:10];
+        let product    : logic<22> = diff11 * coeff11;
+        let term       : logic<14> = product[21:8];
         interp_part = {14'b0, term};
         val_a_27_d  = val_a_27;
         quadrant_d3 = quadrant_d2;
@@ -288,7 +280,7 @@ module test_sine_wave_core {
 /// 期待値はテーブル値と補間式から導出:
 ///   45度 (frac=0)      : table[512] = 5931640
 ///   frac < 2^3         : coeff=0 なので table[512] のまま
-///   中点 (frac=2^19)    : table[512] + (table[513]-table[512])/2 = 5931640 + 4546 = 5936186
+///   中点 (frac=2^19)    : table[512] + (table[513]-table[512])/2 = 5931640 + 4544 = 5936184
 ///   90度 (idx=1023)    : table[1023] + ((Q1_23::MAX - table[1023])>>2 × 4095 >> 10) = 8388597 + 7 = 8388604
 #[test(test_sine_wave_lerp_core)]
 module test_sine_wave_lerp_core {
@@ -314,7 +306,7 @@ module test_sine_wave_lerp_core {
 
         phase = 32'h2008_0000;
         clk.next(3);
-        $assert(audio.raw == 27'sd5936186, "lerp midpoint mismatch");
+        $assert(audio.raw == 27'sd5936184, "lerp midpoint mismatch");
 
         phase = 32'h4000_0000;
         clk.next(3);
