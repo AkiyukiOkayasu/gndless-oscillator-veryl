@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.3] - 2026-10-31
+
+### Fixed
+
+- `SineWaveLerpCore`の補間乗算を12bit×12bitへ戻した。`diff>>2`と`frac[19:8]`を使う
+- GowinのMULT12X12はsigned 12×12のため、両オペランドから2048を引いて積を計算し、`2048*(a+b) - 2048^2`で補正することでunsigned 12×12を実現した
+- 12bit unsignedを直接MULT12X12へ渡すと27×18へパディングされるが、signed primitive＋バイアス補正ならMULT12X12（0.5 DSPブロック）を維持できる
+- Q4.23出力の最大誤差は約5.5 LSB（約0.0011cent）。公開ポート、レイテンシー、波形interfaceは変更なし
+
 ## [0.5.2] - 2026-10-31
 
 ### Fixed
